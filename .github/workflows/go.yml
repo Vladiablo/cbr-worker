@@ -19,10 +19,10 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Install dependencies
-        run: go get .
+        run: go get ./...
 
       - name: Test with Go
-        run: go test -json > TestResults-${{ matrix.go-version }}.json
+        run: go test -json ./... > TestResults-${{ matrix.go-version }}.json
 
       - name: Upload Go test results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
