@@ -2,24 +2,37 @@ package main
 
 import (
 	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/http/handlers"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 )
 
-// TODO: Place Client inside Handler Struct
-// Client encapsulates loggger and HTTP client
-// Handler struct encapsulates client and calls its method
-// Use custom HTTP server & client
+const httpServerAddr = ":8080"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	cbr := cbr.CbrClient{Logger: logger}
 
-	http.HandleFunc("GET /api/v1/getCurs", cbr.HandleGetCurs)
+	cbrClientLogger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	httpClient := &http.Client{}
+	cbrClient := cbr.NewClient(cbrClientLogger, httpClient)
 
-	logger.Info("Starting HTTP server at port 8080...")
-	err := http.ListenAndServe(":8080", nil)
+	currencyHandlerLogger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	currencyHandler := handlers.NewCurrencyHandler(cbrClient, currencyHandlerLogger)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/getRates", currencyHandler.GetRates)
+
+	srv := &http.Server{
+		Addr:         httpServerAddr,
+		Handler:      mux,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+	}
+
+	logger.Info("Starting HTTP server...", slog.String("addr", httpServerAddr))
+	err := srv.ListenAndServe()
 	if err != nil {
 		logger.Error("Failed to start HTTP server. Exiting...", slog.Any("error", err))
 		os.Exit(1)
