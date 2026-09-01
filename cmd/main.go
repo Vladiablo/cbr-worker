@@ -14,12 +14,16 @@ const httpServerAddr = ":8080"
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
-	cbrClientLogger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	httpClient := &http.Client{}
-	cbrClient := cbr.NewClient(cbrClientLogger, httpClient)
+	httpClient := &http.Client{
+		Timeout: time.Second * 20,
+	}
+	cbrClient := cbr.NewClient(httpClient,
+		logger.With(slog.String("component", "client")),
+	)
 
-	currencyHandlerLogger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	currencyHandler := handlers.NewCurrencyHandler(cbrClient, currencyHandlerLogger)
+	currencyHandler := handlers.NewCurrencyHandler(cbrClient,
+		logger.With(slog.String("component", "http")),
+	)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/getRates", currencyHandler.GetRates)

@@ -11,8 +11,9 @@ import (
 )
 
 type Client struct {
-	logger     *slog.Logger
 	httpClient *http.Client
+
+	logger *slog.Logger
 }
 
 type Currency struct {
@@ -40,8 +41,8 @@ func indenticalCharsetReader(encoding string, input io.Reader) (io.Reader, error
 	return input, nil
 }
 
-func NewClient(logger *slog.Logger, httpClient *http.Client) *Client {
-	return &Client{logger, httpClient}
+func NewClient(httpClient *http.Client, logger *slog.Logger) *Client {
+	return &Client{logger: logger, httpClient: httpClient}
 }
 
 func (c *Client) GetRates(ctx context.Context) (*RatesResponse, error) {
@@ -86,6 +87,10 @@ func (c *Client) GetRates(ctx context.Context) (*RatesResponse, error) {
 	err = decoder.Decode(&result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode CBR response body: %w", err)
+	}
+
+	if len(result.Currencies) == 0 {
+		return nil, fmt.Errorf("no currencies found")
 	}
 
 	return &result, nil

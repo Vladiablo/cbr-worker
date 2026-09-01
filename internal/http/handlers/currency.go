@@ -17,7 +17,7 @@ type ErrorResponse struct {
 }
 
 func NewCurrencyHandler(cbrClient *cbr.Client, logger *slog.Logger) *CurrencyHandler {
-	return &CurrencyHandler{cbrClient: cbrClient}
+	return &CurrencyHandler{cbrClient: cbrClient, logger: logger}
 }
 
 func (h *CurrencyHandler) writeErr(w http.ResponseWriter, err error, statusCode int) {
@@ -42,4 +42,5 @@ func (h *CurrencyHandler) GetRates(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err, http.StatusInternalServerError)
 		return
 	}
+	h.logger.Info("Done")
 }
