@@ -2,12 +2,15 @@ package cbr
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 type myRoundTripper struct {
@@ -20,7 +23,7 @@ func (rt *myRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 
 type myUnexpectedEofReader struct{}
 
-func (r *myUnexpectedEofReader) Read(p []byte) (n int, err error) {
+func (r *myUnexpectedEofReader) Read(_ []byte) (n int, err error) {
 	return 0, io.ErrUnexpectedEOF
 }
 
@@ -167,6 +170,45 @@ var ratesExpectedResult = &RatesResponse{
 	},
 }
 
+type RoundTripperParams struct {
+	statusCode    int
+	contentType   string
+	stringBody    string
+	body          io.Reader
+	contentLength int
+}
+
+func createRoundTripper(cfg *RoundTripperParams) http.RoundTripper {
+	sc := cfg.statusCode
+	if sc == 0 {
+		sc = http.StatusOK
+	}
+
+	header := make(http.Header)
+	if len(cfg.contentType) != 0 {
+		header["Content-Type"] = []string{cfg.contentType}
+	}
+
+	cl := cfg.contentLength
+	body := cfg.body
+	if body == nil {
+		body = strings.NewReader(cfg.stringBody)
+		if cl == 0 {
+			cl = len(cfg.stringBody)
+		}
+	}
+
+	return &myRoundTripper{roundTripFunc: func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode:    sc,
+			Header:        header,
+			Body:          io.NopCloser(body),
+			ContentLength: int64(cl),
+			Request:       r,
+		}, nil
+	}}
+}
+
 func TestClient_GetRates(t *testing.T) {
 	defCtx := context.Background()
 	logger := slog.New(slog.DiscardHandler)
@@ -186,15 +228,7 @@ func TestClient_GetRates(t *testing.T) {
 			args{
 				defCtx,
 			},
-			&myRoundTripper{roundTripFunc: func(r *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode:    http.StatusOK,
-					Header:        http.Header{"Content-Type": []string{"text/xml"}},
-					Body:          io.NopCloser(strings.NewReader(ratesXml)),
-					ContentLength: int64(len(ratesXml)),
-					Request:       r,
-				}, nil
-			}},
+			createRoundTripper(&RoundTripperParams{contentType: "text/xml", stringBody: ratesXml}),
 			ratesExpectedResult,
 			false,
 		},
@@ -203,15 +237,7 @@ func TestClient_GetRates(t *testing.T) {
 			args{
 				defCtx,
 			},
-			&myRoundTripper{roundTripFunc: func(r *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode:    http.StatusOK,
-					Header:        http.Header{"Content-Type": []string{"text/xml"}},
-					Body:          io.NopCloser(strings.NewReader(invalidRatesXml)),
-					ContentLength: int64(len(invalidRatesXml)),
-					Request:       r,
-				}, nil
-			}},
+			createRoundTripper(&RoundTripperParams{contentType: "text/xml", stringBody: invalidRatesXml}),
 			nil,
 			true,
 		},
@@ -220,15 +246,7 @@ func TestClient_GetRates(t *testing.T) {
 			args{
 				defCtx,
 			},
-			&myRoundTripper{roundTripFunc: func(r *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode:    http.StatusOK,
-					Header:        http.Header{"Content-Type": []string{"text/xml"}},
-					Body:          io.NopCloser(strings.NewReader(validButNotRatesXml)),
-					ContentLength: int64(len(validButNotRatesXml)),
-					Request:       r,
-				}, nil
-			}},
+			createRoundTripper(&RoundTripperParams{contentType: "text/xml", stringBody: validButNotRatesXml}),
 			nil,
 			true,
 		},
@@ -237,15 +255,7 @@ func TestClient_GetRates(t *testing.T) {
 			args{
 				defCtx,
 			},
-			&myRoundTripper{roundTripFunc: func(r *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode:    http.StatusOK,
-					Header:        http.Header{"Content-Type": []string{"application/json"}},
-					Body:          io.NopCloser(strings.NewReader(ratesJson)),
-					ContentLength: int64(len(ratesJson)),
-					Request:       r,
-				}, nil
-			}},
+			createRoundTripper(&RoundTripperParams{contentType: "application/json", stringBody: ratesJson}),
 			nil,
 			true,
 		},
@@ -254,15 +264,7 @@ func TestClient_GetRates(t *testing.T) {
 			args{
 				defCtx,
 			},
-			&myRoundTripper{roundTripFunc: func(r *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode:    http.StatusOK,
-					Header:        http.Header{"Content-Type": []string{"text/html"}},
-					Body:          io.NopCloser(strings.NewReader(sampleHtml)),
-					ContentLength: int64(len(sampleHtml)),
-					Request:       r,
-				}, nil
-			}},
+			createRoundTripper(&RoundTripperParams{contentType: "text/html", stringBody: sampleHtml}),
 			nil,
 			true,
 		},
@@ -271,15 +273,7 @@ func TestClient_GetRates(t *testing.T) {
 			args{
 				defCtx,
 			},
-			&myRoundTripper{roundTripFunc: func(r *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode:    http.StatusOK,
-					Header:        http.Header{"Content-Type": []string{"text/xml"}},
-					Body:          io.NopCloser(strings.NewReader("")),
-					ContentLength: 0,
-					Request:       r,
-				}, nil
-			}},
+			createRoundTripper(&RoundTripperParams{contentType: "text/xml", stringBody: ""}),
 			nil,
 			true,
 		},
@@ -288,18 +282,49 @@ func TestClient_GetRates(t *testing.T) {
 			args{
 				defCtx,
 			},
-			&myRoundTripper{roundTripFunc: func(r *http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     http.Header{"Content-Type": []string{"text/xml"}},
-					Body: io.NopCloser(io.MultiReader(
-						io.LimitReader(strings.NewReader(ratesXml), int64(len(ratesXml)/2)),
-						&myUnexpectedEofReader{}),
-					),
-					ContentLength: int64(len(ratesXml)),
-					Request:       r,
-				}, nil
-			}},
+			createRoundTripper(&RoundTripperParams{
+				contentType: "text/xml",
+				body: io.MultiReader(
+					io.LimitReader(strings.NewReader(ratesXml), int64(len(ratesXml)/2)),
+					&myUnexpectedEofReader{},
+				),
+				contentLength: len(ratesXml),
+			}),
+			nil,
+			true,
+		},
+		{
+			"not found response",
+			args{
+				defCtx,
+			},
+			createRoundTripper(&RoundTripperParams{statusCode: http.StatusNotFound,
+				contentType: "text/plain", stringBody: "Not Found"},
+			),
+			nil,
+			true,
+		},
+		{
+			"internal server error response",
+			args{
+				defCtx,
+			},
+			createRoundTripper(&RoundTripperParams{statusCode: http.StatusInternalServerError,
+				contentType: "text/plain", stringBody: "Internal Server Error"},
+			),
+			nil,
+			true,
+		},
+		{
+			"failed connection",
+			args{
+				defCtx,
+			},
+			&http.Transport{
+				DialContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
+					return nil, fmt.Errorf("dial tcp: connection refused")
+				},
+			},
 			nil,
 			true,
 		},
@@ -323,51 +348,55 @@ func TestClient_GetRates(t *testing.T) {
 	}
 }
 
-//func TestClient_GetRatesTransport(t *testing.T) {
-//	defCtx := context.Background()
-//	logger := slog.New(slog.DiscardHandler)
-//
-//	type args struct {
-//		ctx context.Context
-//	}
-//	tests := []struct {
-//		name      string
-//		args      args
-//		transport http.RoundTripper
-//		want      *RatesResponse
-//		wantErr   bool
-//	}{
-//		{
-//			"valid xml response",
-//			args{
-//				context.TODO(),
-//			},
-//			...,
-//
-//		},
-//		// TODO: Add test cases.
-//	}
-//
-//	httptest.NewServer()
-//
-//	for _, tt := range tests {
-//		t.Run(tt.name, func(t *testing.T) {
-//			c := &Client{
-//				httpClient: &http.Client{Transport: tt.transport},
-//				logger:     logger,
-//			}
-//			got, err := c.GetRates(tt.args.ctx)
-//			if (err != nil) != tt.wantErr {
-//				t.Errorf("GetRates() error = %v, wantErr %v", err, tt.wantErr)
-//				return
-//			}
-//			if !reflect.DeepEqual(got, tt.want) {
-//				t.Errorf("GetRates() got = %v, want %v", got, tt.want)
-//			}
-//		})
-//	}
-//}
+func TestClient_GetRatesContext(t *testing.T) {
+	defCtx := context.Background()
+	logger := slog.New(slog.DiscardHandler)
 
-//func TestClient_GetRatesTimeout(t *testing.T) {
-//
-//}
+	roundTripperWithCtx := &myRoundTripper{
+		roundTripFunc: func(r *http.Request) (*http.Response, error) {
+			reqCtx := r.Context()
+			<-reqCtx.Done()
+			return nil, context.Cause(reqCtx)
+		},
+	}
+
+	t.Run("context timeout", func(t *testing.T) {
+		c := &Client{
+			httpClient: &http.Client{Transport: roundTripperWithCtx},
+			logger:     logger,
+		}
+		ctx, cancel := context.WithTimeout(defCtx, 0)
+		defer cancel()
+
+		_, err := c.GetRates(ctx)
+		if err == nil {
+			t.Errorf("GetRates() error = %v, wantErr %v", err, true)
+		}
+	})
+
+	t.Run("context canceled", func(t *testing.T) {
+		c := &Client{
+			httpClient: &http.Client{Transport: roundTripperWithCtx},
+			logger:     logger,
+		}
+		ctx, cancel := context.WithCancel(defCtx)
+		cancel()
+
+		_, err := c.GetRates(ctx)
+		if err == nil {
+			t.Errorf("GetRates() error = %v, wantErr %v", err, true)
+		}
+	})
+
+	t.Run("http client timeout", func(t *testing.T) {
+		c := &Client{
+			httpClient: &http.Client{Transport: roundTripperWithCtx, Timeout: time.Microsecond},
+			logger:     logger,
+		}
+
+		_, err := c.GetRates(defCtx)
+		if err == nil {
+			t.Errorf("GetRates() error = %v, wantErr %v", err, true)
+		}
+	})
+}
