@@ -100,7 +100,7 @@ func run() int {
 			ctxDoneCh = nil
 			timeoutCh = time.After(shutdownTimeout)
 
-		case _ = <-timeoutCh:
+		case <-timeoutCh:
 			logger.Error("Failed to graceful shutdown", slog.String("duration", shutdownTimeout.String()))
 
 			return 1
