@@ -17,19 +17,19 @@ type Client struct {
 }
 
 type Currency struct {
-	ID        string `xml:"ID,attr" json:"id"`
-	NumCode   string `json:"numCode"`
-	CharCode  string `json:"charCode"`
-	Nominal   uint   `json:"nominal"`
-	Name      string `json:"name"`
-	Value     string `json:"value"`
-	VunitRate string `json:"vunitRate"`
+	ID        string `xml:"ID,attr"`
+	NumCode   string
+	CharCode  string
+	Nominal   uint
+	Name      string
+	Value     string
+	VunitRate string
 }
 
 type RatesResponse struct {
-	Date       string     `xml:"Date,attr" json:"date"`
-	Name       string     `xml:"name,attr" json:"name"`
-	Currencies []Currency `xml:"Valute" json:"currencies"`
+	Date       string     `xml:"Date,attr"`
+	Name       string     `xml:"name,attr"`
+	Currencies []Currency `xml:"Valute"`
 }
 
 const getRatesCbrMirrorUrl = "https://www.cbr-xml-daily.ru/daily_eng_utf8.xml"
@@ -37,7 +37,7 @@ const getRatesCbrMirrorUrl = "https://www.cbr-xml-daily.ru/daily_eng_utf8.xml"
 const getRatesRequestTImeout = time.Second * 5
 const unexpectedStatusCodeResponseBodySizeLimit = 4 * 1024
 
-func indenticalCharsetReader(encoding string, input io.Reader) (io.Reader, error) {
+func indenticalCharsetReader(_ string, input io.Reader) (io.Reader, error) {
 	return input, nil
 }
 
