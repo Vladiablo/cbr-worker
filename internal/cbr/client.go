@@ -16,7 +16,7 @@ type Client struct {
 	logger *slog.Logger
 }
 
-type Currency struct {
+type RawCurrency struct {
 	ID        string `xml:"ID,attr"`
 	NumCode   string
 	CharCode  string
@@ -27,9 +27,9 @@ type Currency struct {
 }
 
 type RatesResponse struct {
-	Date       string     `xml:"Date,attr"`
-	Name       string     `xml:"name,attr"`
-	Currencies []Currency `xml:"Valute"`
+	Date       string         `xml:"Date,attr"`
+	Name       string         `xml:"name,attr"`
+	Currencies []*RawCurrency `xml:"Valute"`
 }
 
 const getRatesCbrMirrorUrl = "https://www.cbr-xml-daily.ru/daily_eng_utf8.xml"

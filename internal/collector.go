@@ -56,9 +56,7 @@ func (c *Collector) Collect(ctx context.Context) error {
 	var numCodes []int
 	var currRates []string
 
-	for idx := range rates.Currencies {
-		curr := &rates.Currencies[idx]
-
+	for _, curr := range rates.Currencies {
 		numCode, err := strconv.ParseInt(curr.NumCode, 10, 64)
 		if err != nil {
 			return fmt.Errorf("failed to parse num code %s: %w", curr.NumCode, err)

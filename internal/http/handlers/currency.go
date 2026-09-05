@@ -1,18 +1,16 @@
 package handlers
 
 import (
+	"cbr-worker/internal/cbr"
 	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type CurrencyHandler struct {
-	pool   *pgxpool.Pool
+	repo   *cbr.Repository
 	logger *slog.Logger
 }
 
@@ -23,16 +21,16 @@ type Currency struct {
 }
 
 type RatesResponse struct {
-	Date       string     `json:"date"`
-	Currencies []Currency `json:"currencies"`
+	Date       string      `json:"date"`
+	Currencies []*Currency `json:"currencies"`
 }
 
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-func NewCurrencyHandler(pool *pgxpool.Pool, logger *slog.Logger) *CurrencyHandler {
-	return &CurrencyHandler{pool: pool, logger: logger}
+func NewCurrencyHandler(repo *cbr.Repository, logger *slog.Logger) *CurrencyHandler {
+	return &CurrencyHandler{repo: repo, logger: logger}
 }
 
 func (h *CurrencyHandler) writeErr(w http.ResponseWriter, err error, statusCode int) {
@@ -43,7 +41,7 @@ func (h *CurrencyHandler) writeErr(w http.ResponseWriter, err error, statusCode 
 	}
 }
 
-const dbTimeout = 10 * time.Second
+const repoTimeout = 10 * time.Second
 
 const selectLatestExchangeRatesQuery = `SELECT rate_date, curr_code, curr_num_code, rate
 FROM exchange_rates
@@ -55,34 +53,24 @@ WHERE rate_date = (
 func (h *CurrencyHandler) GetRates(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	ctx, cancel := context.WithTimeout(r.Context(), dbTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), repoTimeout)
 	defer cancel()
 
-	rows, err := h.pool.Query(ctx, selectLatestExchangeRatesQuery)
+	rates, err := h.repo.GetLatestExchangeRates(ctx)
 	if err != nil {
-		h.logger.Error("Failed to query latest exchange rates", slog.Any("error", err))
+		h.logger.Error("Failed to get latest exchange rates", slog.Any("error", err))
 		h.writeErr(w, err, http.StatusInternalServerError)
-		return
 	}
-	defer rows.Close()
 
 	var ratesResponse RatesResponse
-	var date pgtype.Date
-
-	for rows.Next() {
-		var currency Currency
-
-		err = rows.Scan(&date, &currency.Code, &currency.NumCode, &currency.Rate)
-		if err != nil {
-			h.logger.Error("Failed to scan exchange rate", slog.Any("error", err))
-			h.writeErr(w, err, http.StatusInternalServerError)
-			return
-		}
-
-		ratesResponse.Currencies = append(ratesResponse.Currencies, currency)
+	ratesResponse.Date = rates.Date.Format("02.01.2006")
+	for _, rate := range rates.Currencies {
+		ratesResponse.Currencies = append(ratesResponse.Currencies, &Currency{
+			Code:    rate.Code,
+			NumCode: rate.NumCode,
+			Rate:    rate.Rate,
+		})
 	}
-
-	ratesResponse.Date = date.Time.Format(time.DateOnly)
 
 	err = json.NewEncoder(w).Encode(ratesResponse)
 	if err != nil {

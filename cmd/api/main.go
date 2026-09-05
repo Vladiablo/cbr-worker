@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cbr-worker/internal/cbr"
 	"cbr-worker/internal/http"
 	"context"
 	"log/slog"
@@ -36,7 +37,9 @@ func run() int {
 	}
 	defer pool.Close()
 
-	srv := http.NewServer(httpServerAddr, pool, logger)
+	repo := cbr.NewRepository(pool)
+
+	srv := http.NewServer(httpServerAddr, repo, logger)
 
 	if err := srv.Start(context.TODO()); err != nil {
 		logger.Error("Failed to start server. Exiting...", slog.Any("error", err))

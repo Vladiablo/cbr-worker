@@ -41,15 +41,6 @@ func run() int {
 	}
 	defer pool.Close()
 
-	ctx, cancel = context.WithTimeout(defCtx, dbConnTimeout)
-	defer cancel()
-
-	err = pool.Ping(ctx)
-	if err != nil {
-		logger.Error("Failed to test database connection pool. Exiting...", slog.Any("error", err))
-		return 3
-	}
-
 	httpClient := &http.Client{
 		Timeout: time.Second * 30,
 	}
