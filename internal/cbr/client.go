@@ -58,7 +58,7 @@ func (c *Client) GetRates(ctx context.Context) (*RatesResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request to CBR: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body := make([]byte, unexpectedStatusCodeResponseBodySizeLimit)

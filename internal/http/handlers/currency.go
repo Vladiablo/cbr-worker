@@ -43,13 +43,6 @@ func (h *CurrencyHandler) writeErr(w http.ResponseWriter, err error, statusCode 
 
 const repoTimeout = 10 * time.Second
 
-const selectLatestExchangeRatesQuery = `SELECT rate_date, curr_code, curr_num_code, rate
-FROM exchange_rates
-WHERE rate_date = (
-    SELECT MAX(rate_date)
-    FROM exchange_rates
-);`
-
 func (h *CurrencyHandler) GetRates(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
