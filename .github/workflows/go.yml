@@ -1,9 +1,10 @@
-name: Go Tests
+name: CI
 
 on:
   push:
+    branches: [master]
   pull_request:
-    branches: [ master, main ]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
@@ -15,54 +16,61 @@ permissions:
 
 jobs:
   test:
-    name: Run Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: 'go.mod'
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: Verify dependencies
-        run: |
-          go mod download
-          go mod verify
+          go-version-file: go.mod
 
       - name: Install gotestsum
-        run: |
-          mkdir -p "${HOME}/.local/bin"
-          if curl -sSL --fail "https://github.com/gotestyourself/gotestsum/releases/download/v1.12.0/gotestsum_1.12.0_linux_amd64.tar.gz" | tar -xz -C "${HOME}/.local/bin" gotestsum 2>/dev/null; then
-            echo "Installed gotestsum from precompiled binary."
-          else
-            echo "Release download failed, falling back to go install..."
-            go install gotest.tools/gotestsum@v1.12.0
-            cp "$(go env GOPATH)/bin/gotestsum" "${HOME}/.local/bin/"
-          fi
-          echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+        run: go install gotest.tools/gotestsum@v1.13.0
 
-      - name: Run tests
+      - name: Test
         run: |
           mkdir -p test-results
           gotestsum --format github-actions \
             --junitfile test-results/junit.xml \
-            --jsonfile test-results/test-results.json \
-            -- -race -coverprofile=test-results/coverage.out -covermode=atomic -timeout=5m ./...
+            -- -coverprofile=test-results/coverage.out -timeout=5m ./...
 
-      - name: Generate test summary
-        if: always()
-        run: python3 .github/scripts/generate_test_summary.py test-results/junit.xml test-results/coverage.out
-
-      - name: Upload test artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Test summary
+        if: ${{ !cancelled() && hashFiles('test-results/junit.xml') != '' }}
+        uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2.6
         with:
-          name: test-results
-          path: test-results/
-          if-no-files-found: ignore
+          paths: test-results/junit.xml
+          show: all
+          folded: true
+
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('test-results/coverage.out') != '' }}
+        shell: bash
+        run: |
+          {
+            echo '## Coverage'
+            echo '```text'
+            go tool cover -func=test-results/coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
