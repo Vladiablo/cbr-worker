@@ -139,7 +139,7 @@ const sampleHtml = `<!DOCTYPE html>
 var ratesExpectedResult = &RatesResponse{
 	Date: "01.09.2026",
 	Name: "Foreign Currency Market",
-	Currencies: []Currency{
+	Currencies: []*RawCurrency{
 		{
 			ID:        "R01010",
 			NumCode:   "036",

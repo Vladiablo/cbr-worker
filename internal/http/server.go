@@ -1,13 +1,12 @@
 package http
 
 import (
+	"cbr-worker/internal/cbr"
 	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Server struct {
@@ -16,10 +15,10 @@ type Server struct {
 	logger *slog.Logger
 }
 
-func NewServer(addr string, pool *pgxpool.Pool, logger *slog.Logger) *Server {
+func NewServer(addr string, repo *cbr.Repository, logger *slog.Logger) *Server {
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      getRoutes(pool, logger),
+		Handler:      getRoutes(repo, logger),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}

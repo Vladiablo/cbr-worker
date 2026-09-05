@@ -1,16 +1,15 @@
 package http
 
 import (
+	"cbr-worker/internal/cbr"
 	"cbr-worker/internal/http/handlers"
 	"log/slog"
 	"net/http"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func getRoutes(pool *pgxpool.Pool, logger *slog.Logger) *http.ServeMux {
+func getRoutes(repo *cbr.Repository, logger *slog.Logger) *http.ServeMux {
 	currencyHandler := handlers.NewCurrencyHandler(
-		pool,
+		repo,
 		logger.With(slog.String("component", "http")),
 	)
 

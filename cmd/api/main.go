@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cbr-worker/internal/cbr"
 	"cbr-worker/internal/http"
 	"context"
 	"log/slog"
@@ -36,7 +37,13 @@ func run() int {
 	}
 	defer pool.Close()
 
-	srv := http.NewServer(httpServerAddr, pool, logger)
+	repo := cbr.NewRepository(pool,
+		logger.With(slog.String("component", "repository")),
+	)
+
+	srv := http.NewServer(httpServerAddr, repo,
+		logger.With(slog.String("component", "http-server")),
+	)
 
 	if err := srv.Start(context.TODO()); err != nil {
 		logger.Error("Failed to start server. Exiting...", slog.Any("error", err))
@@ -50,3 +57,5 @@ func run() int {
 func main() {
 	os.Exit(run())
 }
+
+// TODO: rename endpoint and add query params

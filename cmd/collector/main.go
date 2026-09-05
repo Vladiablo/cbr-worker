@@ -41,33 +41,30 @@ func run() int {
 	}
 	defer pool.Close()
 
-	ctx, cancel = context.WithTimeout(defCtx, dbConnTimeout)
-	defer cancel()
-
-	err = pool.Ping(ctx)
-	if err != nil {
-		logger.Error("Failed to test database connection pool. Exiting...", slog.Any("error", err))
-		return 3
-	}
-
 	httpClient := &http.Client{
 		Timeout: time.Second * 30,
 	}
 	cbrClient := cbr.NewClient(httpClient,
-		logger.With(slog.String("component", "client")),
+		logger.With(slog.String("component", "cbr-client")),
 	)
-	collector := internal.NewCollector(cbrClient, pool,
+
+	repo := cbr.NewRepository(pool,
+		logger.With(slog.String("component", "repository")),
+	)
+
+	collector := internal.NewCollector(cbrClient, repo,
 		logger.With(slog.String("component", "collector")),
 	)
 
 	logger.Info("Starting collector...")
+
 	ctx, cancel = context.WithTimeout(defCtx, collectTimeout)
 	defer cancel()
 
 	err = collector.Collect(ctx)
 	if err != nil {
 		logger.Error("Failed to collect exchange rates", slog.Any("error", err))
-		return 4
+		return 3
 	}
 
 	logger.Info("Collector succeeded")
