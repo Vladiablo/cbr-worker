@@ -1,32 +1,68 @@
-name: Upload Go test results
+name: Go Tests
 
-on: [push]
+on:
+  push:
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-
+  test:
+    name: Run Tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: [ '1.26' ]
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # 7.0.0
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version-file: 'go.mod'
+          cache: true
+          cache-dependency-path: go.sum
 
-      - name: Install dependencies
-        run: go get ./...
+      - name: Verify dependencies
+        run: |
+          go mod download
+          go mod verify
 
-      - name: Test with Go
-        run: go test -json ./... > TestResults-${{ matrix.go-version }}.json
+      - name: Install gotestsum
+        run: |
+          mkdir -p "${HOME}/.local/bin"
+          if curl -sSL --fail "https://github.com/gotestyourself/gotestsum/releases/download/v1.12.0/gotestsum_1.12.0_linux_amd64.tar.gz" | tar -xz -C "${HOME}/.local/bin" gotestsum 2>/dev/null; then
+            echo "Installed gotestsum from precompiled binary."
+          else
+            echo "Release download failed, falling back to go install..."
+            go install gotest.tools/gotestsum@v1.12.0
+            cp "$(go env GOPATH)/bin/gotestsum" "${HOME}/.local/bin/"
+          fi
+          echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Upload Go test results
+      - name: Run tests
+        run: |
+          mkdir -p test-results
+          gotestsum --format github-actions \
+            --junitfile test-results/junit.xml \
+            --jsonfile test-results/test-results.json \
+            -- -race -coverprofile=test-results/coverage.out -covermode=atomic -timeout=5m ./...
+
+      - name: Generate test summary
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
+        run: python3 .github/scripts/generate_test_summary.py test-results/junit.xml test-results/coverage.out
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Go-results-${{ matrix.go-version }}
-          path: TestResults-${{ matrix.go-version }}.json
+          name: test-results
+          path: test-results/
+          if-no-files-found: ignore
