@@ -46,15 +46,13 @@ func run() int {
 
 	repo := cbr.NewRepository(pool)
 
-	srv := http.NewServer(httpServerAddr, repo, logger.With(slog.String("component", "http-server1")))
-	srv2 := http.NewServer(":8081", repo, logger.With(slog.String("component", "http-server2")))
+	srv := http.NewServer(httpServerAddr, repo, logger.With(slog.String("component", "http-server")))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cancel()
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(1)
 
 	var firstErr atomic.Pointer[error]
 
@@ -66,17 +64,6 @@ func run() int {
 			firstErr.CompareAndSwap(nil, &err)
 
 			logger.Error("Failed to start server 1. Exiting...", slog.Any("error", err))
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		defer cancel()
-
-		if err := srv2.Start(ctx); err != nil {
-			firstErr.CompareAndSwap(nil, &err)
-
-			logger.Error("Failed to start server 2. Exiting...", slog.Any("error", err))
 		}
 	}()
 
