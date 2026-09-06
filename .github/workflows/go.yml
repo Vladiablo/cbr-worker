@@ -1,32 +1,76 @@
-name: Upload Go test results
+name: CI
 
-on: [push]
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: [ '1.26' ]
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # 7.0.0
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version-file: go.mod
 
-      - name: Install dependencies
-        run: go get ./...
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@v1.13.0
 
-      - name: Test with Go
-        run: go test -json ./... > TestResults-${{ matrix.go-version }}.json
+      - name: Test
+        run: |
+          mkdir -p test-results
+          gotestsum --format github-actions \
+            --junitfile test-results/junit.xml \
+            -- -coverprofile=test-results/coverage.out -timeout=5m ./...
 
-      - name: Upload Go test results
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # 7.0.1
+      - name: Test summary
+        if: ${{ !cancelled() && hashFiles('test-results/junit.xml') != '' }}
+        uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2.6
         with:
-          name: Go-results-${{ matrix.go-version }}
-          path: TestResults-${{ matrix.go-version }}.json
+          paths: test-results/junit.xml
+          show: all
+          folded: true
+
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('test-results/coverage.out') != '' }}
+        shell: bash
+        run: |
+          {
+            echo '## Coverage'
+            echo '```text'
+            go tool cover -func=test-results/coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
