@@ -9,11 +9,17 @@ import (
 type CollectorArgs struct {
 	from DateFlag
 	to   DateFlag
+
+	// TODO: Add database url
+	// TODO: Add concurrency
+	// TODO: Add collect timeout
 }
 
 type DateFlag struct {
 	time.Time
 }
+
+var _ flag.Value = (*DateFlag)(nil)
 
 func (d *DateFlag) String() string {
 	return d.Format(time.DateOnly)

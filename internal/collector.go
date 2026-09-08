@@ -4,6 +4,7 @@ import (
 	"cbr-worker/internal/cbr"
 	"context"
 	"fmt"
+	"iter"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -20,8 +21,35 @@ func NewCollector(cbrClient *cbr.Client, repo *cbr.Repository, logger *slog.Logg
 	return &Collector{cbrClient: cbrClient, repo: repo, logger: logger}
 }
 
+func generateDateRange(from, to time.Time) iter.Seq[time.Time] {
+	return func(yield func(time.Time) bool) {
+		for !from.After(to) {
+			yield(from)
+			from = from.AddDate(0, 0, 1)
+		}
+	}
+}
+
 func (c *Collector) Collect(ctx context.Context, from time.Time, to time.Time) error {
-	cbrRates, err := c.cbrClient.GetRates(ctx)
+	for date := range generateDateRange(from, to) {
+		if err := c.CollectDate(ctx, date); err != nil {
+			return fmt.Errorf("failed collect date %s: %w", date.Format(time.DateOnly), err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Collector) CollectDate(ctx context.Context, wantDate time.Time) error {
+	// TODO: Make timeout configurable
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	c.logger.Info("CollectDate",
+		slog.String("wantDate", wantDate.Format(time.DateOnly)),
+	)
+
+	cbrRates, err := c.cbrClient.GetRates(ctx, wantDate)
 	if err != nil {
 		return fmt.Errorf("failed to get rates: %w", err)
 	}
