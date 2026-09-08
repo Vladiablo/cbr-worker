@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -36,9 +38,10 @@ func (h *CurrencyHandler) GetRates(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	var date time.Time
-	var currency string
+	var currency []string
 
 	if query := r.URL.Query(); len(query) > 0 {
+		// TODO: Accept fromDate / toDate
 		strDate := query.Get("date")
 		if strDate != "" {
 			date, err = time.Parse(time.DateOnly, strDate)
@@ -50,10 +53,19 @@ func (h *CurrencyHandler) GetRates(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		currency = query.Get("currency")
+		rawCurrency := query.Get("currency")
+		if len(rawCurrency) > 0 {
+			currency = strings.Split(
+				rawCurrency,
+				",",
+			)
+			currency = slices.DeleteFunc(currency, func(s string) bool {
+				return len(s) == 0
+			})
+		}
 	}
 
-	if currency != "" || !date.IsZero() {
+	if len(currency) > 0 || !date.IsZero() {
 		rates, err = h.repo.GetExchangeRates(r.Context(), currency, date)
 	} else {
 		rates, err = h.repo.GetLatestExchangeRates(r.Context())
