@@ -32,7 +32,10 @@ type RatesResponse struct {
 	Currencies []*RawCurrency `xml:"Valute"`
 }
 
-const getRatesCbrMirrorUrl = "https://www.cbr-xml-daily.ru/daily_eng_utf8.xml"
+const (
+	getRatesCbrMirrorUrl       = "https://www.cbr-xml-daily.ru/daily_eng_utf8.xml"
+	getRatesByDateCbrMirrorUrl = "https://www.cbr-xml-daily.ru/daily_eng_utf8.xml"
+)
 
 const getRatesRequestTImeout = time.Second * 5
 const unexpectedStatusCodeResponseBodySizeLimit = 4 * 1024
@@ -45,11 +48,18 @@ func NewClient(httpClient *http.Client, logger *slog.Logger) *Client {
 	return &Client{logger: logger, httpClient: httpClient}
 }
 
-func (c *Client) GetRates(ctx context.Context) (*RatesResponse, error) {
+func (c *Client) GetRates(ctx context.Context, date time.Time) (*RatesResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, getRatesRequestTImeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, getRatesCbrMirrorUrl, http.NoBody)
+	url := ""
+	if date.IsZero() {
+		url = getRatesCbrMirrorUrl
+	} else {
+		url = fmt.Sprintf()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request to CBR: %w", err)
 	}
