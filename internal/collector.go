@@ -20,7 +20,7 @@ func NewCollector(cbrClient *cbr.Client, repo *cbr.Repository, logger *slog.Logg
 	return &Collector{cbrClient: cbrClient, repo: repo, logger: logger}
 }
 
-func (c *Collector) Collect(ctx context.Context) error {
+func (c *Collector) Collect(ctx context.Context, from time.Time, to time.Time) error {
 	cbrRates, err := c.cbrClient.GetRates(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get rates: %w", err)
@@ -69,3 +69,7 @@ func (c *Collector) Collect(ctx context.Context) error {
 
 	return nil
 }
+
+// TODO: console args: -from date, -to date
+// if only from set to to now
+// if only to return error
