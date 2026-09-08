@@ -14,7 +14,7 @@ func getRoutes(repo *cbr.Repository, logger *slog.Logger) *http.ServeMux {
 	)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/getRates", currencyHandler.GetRates)
+	mux.HandleFunc("GET /v1/rates", currencyHandler.GetRates)
 
 	return mux
 }

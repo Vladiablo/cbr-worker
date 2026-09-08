@@ -40,14 +40,15 @@ func NewRepository(pool *pgxpool.Pool, logger *slog.Logger) *Repository {
 
 const dbTimeout = 10 * time.Second
 
-func (r *Repository) GetLatestExchangeRates(ctx context.Context) (*ExchangeRates, error) {
+func (r *Repository) GetLatestExchangeRates(ctx context.Context) ([]*ExchangeRates, error) {
 	const sql = `
 SELECT rate_date, curr_code, curr_num_code, rate
 FROM exchange_rates
 WHERE rate_date = (
     SELECT MAX(rate_date)
     FROM exchange_rates
-);
+)
+ORDER BY curr_code ASC;
 `
 
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -79,7 +80,76 @@ WHERE rate_date = (
 
 	rates.Date.Time = date.Time
 
-	return &rates, nil
+	return []*ExchangeRates{&rates}, nil
+}
+
+func (r *Repository) GetExchangeRates(ctx context.Context, curr string, date time.Time) ([]*ExchangeRates, error) {
+	const sql = `
+SELECT rate_date, curr_code, curr_num_code, rate
+FROM exchange_rates
+WHERE ($1::text IS NULL OR curr_code = $1)
+AND ($2::date IS NULL OR rate_date = $2)
+ORDER BY rate_date DESC, curr_code ASC;
+`
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	rows, err := r.pool.Query(ctx, sql,
+		pgtype.Text{
+			String: curr,
+			Valid:  curr != "",
+		},
+		pgtype.Date{
+			Time:  date,
+			Valid: !date.IsZero(),
+		},
+	)
+	if err != nil {
+		r.logger.Error("Failed to query exchange rates",
+			slog.String("curr", curr),
+			slog.Time("date", date),
+			slog.Any("error", err),
+		)
+
+		return nil, fmt.Errorf("failed to query exchange rates: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]*ExchangeRates, 0, 1)
+
+	{
+		var rates *ExchangeRates
+		var prevDate, date pgtype.Date
+
+		for rows.Next() {
+			var currency Currency
+
+			prevDate = date
+
+			err = rows.Scan(&date, &currency.Code, &currency.NumCode, &currency.Rate)
+			if err != nil {
+				r.logger.Error("Failed to scan exchange rate", slog.Any("error", err))
+
+				return nil, fmt.Errorf("failed to scan exchange rate: %w", err)
+			}
+
+			if date != prevDate {
+				rates = &ExchangeRates{}
+				rates.Date.Time = date.Time
+
+				result = append(result, rates)
+			}
+
+			if rates == nil {
+				return nil, fmt.Errorf("rates was nil")
+			}
+
+			rates.Currencies = append(rates.Currencies, &currency)
+		}
+	}
+
+	return result, nil
 }
 
 func (r *Repository) InsertExchangeRates(ctx context.Context, rates *ExchangeRates) (int, error) {
