@@ -16,15 +16,17 @@ import (
 )
 
 const (
-	dbConnTimeout  = 10 * time.Second
-	collectTimeout = 30 * time.Second
+	ExitCodeInvalidArgs       = 1
+	RuntimeDependenciesFailed = 2
+	CollectFailed             = 3
 )
 
 func run() int {
 	args := parseArgs()
 	if err := args.Validate(); err != nil {
 		fmt.Printf("Failed to validate arguments: %v\n", err)
-		return 1
+
+		return ExitCodeInvalidArgs
 	}
 
 	_ = godotenv.Load()
@@ -34,17 +36,15 @@ func run() int {
 	cfg, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		logger.Error("Failed to parse database config. Exiting...", slog.Any("error", err))
-		return 2
+
+		return RuntimeDependenciesFailed
 	}
 
-	defCtx := context.Background()
-	ctx, cancel := context.WithTimeout(defCtx, dbConnTimeout)
-	defer cancel()
-
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		logger.Error("Failed to create database connection pool. Exiting...", slog.Any("error", err))
-		return 3
+
+		return RuntimeDependenciesFailed
 	}
 	defer pool.Close()
 
@@ -65,8 +65,10 @@ func run() int {
 
 	logger.Info("Starting collector...")
 
-	ctx, cancel = context.WithTimeout(defCtx, collectTimeout)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// TODO: Add graceful shutdown
 
 	err = collector.Collect(ctx, args.from.Time, args.to.Time)
 	if err != nil {
@@ -75,10 +77,12 @@ func run() int {
 			slog.Time("to", args.to.Time),
 			slog.Any("error", err),
 		)
-		return 4
+
+		return CollectFailed
 	}
 
 	logger.Info("Collector succeeded")
+
 	return 0
 }
 
