@@ -22,21 +22,23 @@ func NewRepository(pool *pgxpool.Pool, logger *slog.Logger) *Repository {
 
 const dbTimeout = 10 * time.Second
 
-func (r *Repository) GetLatestExchangeRates(ctx context.Context) ([]*ExchangeRates, error) {
+func (r *Repository) GetLatestExchangeRates(ctx context.Context, curr []string) ([]*ExchangeRates, error) {
 	const sql = `
 SELECT rate_date, curr_code, curr_num_code, rate
 FROM exchange_rates
-WHERE rate_date = (
+WHERE
+rate_date = (
     SELECT MAX(rate_date)
     FROM exchange_rates
 )
-ORDER BY curr_code ASC;
+AND ($1::text[] IS NULL OR curr_code = ANY($1))
+ORDER BY curr_code ASC
 `
 
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	rows, err := r.pool.Query(ctx, sql)
+	rows, err := r.pool.Query(ctx, sql, curr)
 	if err != nil {
 		r.logger.Error("Failed to query latest exchange rates", slog.Any("error", err))
 
@@ -46,30 +48,25 @@ ORDER BY curr_code ASC;
 	return r.scanExchangeRateRows(rows)
 }
 
-func (r *Repository) GetExchangeRates(ctx context.Context, curr []string, date time.Time) ([]*ExchangeRates, error) {
+func (r *Repository) GetExchangeRatesByDates(ctx context.Context, curr []string, from, to time.Time) ([]*ExchangeRates, error) {
 	const sql = `
 SELECT rate_date, curr_code, curr_num_code, rate
 FROM exchange_rates
 WHERE
 	($1::text[] IS NULL OR curr_code = ANY($1))
-	AND ($2::date IS NULL OR rate_date = $2)
+	AND (rate_date BETWEEN $2 AND $3)
 ORDER BY rate_date DESC, curr_code ASC
 `
 
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	rows, err := r.pool.Query(ctx, sql,
-		curr,
-		pgtype.Date{
-			Time:  date,
-			Valid: !date.IsZero(),
-		},
-	)
+	rows, err := r.pool.Query(ctx, sql, curr, from, to)
 	if err != nil {
 		r.logger.Error("Failed to query exchange rates",
 			slog.Any("curr", curr),
-			slog.Time("date", date),
+			slog.Time("from", from),
+			slog.Time("to", to),
 			slog.Any("error", err),
 		)
 
@@ -80,24 +77,6 @@ ORDER BY rate_date DESC, curr_code ASC
 }
 
 func (r *Repository) scanExchangeRateRows(rows pgx.Rows) ([]*ExchangeRates, error) {
-	//type ExchangeRateRaw struct {
-	//	Date            pgtype.Date `db:"rate_date"`
-	//	CurrencyCode    string      `db:"curr_code"`
-	//	CurrencyNumCode int         `db:"curr_num_code"`
-	//	Rate            string      `db:"rate"`
-	//}
-	//
-	//raw, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[ExchangeRateRaw])
-	//if err != nil {
-	//	r.logger.Error("Failed to query latest exchange rates", slog.Any("error", err))
-	//
-	//	return nil, fmt.Errorf("failed to query latest exchange rates: %w", err)
-	//}
-
-	//if len(raw) == 0 {
-	//	return nil, nil
-	//}
-
 	if !rows.Next() {
 		return nil, nil
 	}
@@ -114,7 +93,7 @@ func (r *Repository) scanExchangeRateRows(rows pgx.Rows) ([]*ExchangeRates, erro
 		Date:  Date{Time: currDate.Time},
 		Rates: make([]*ExchangeRate, 0, 100),
 	}
-	currExchangeRate.Rates = append(currExchangeRate.Rates, &currRate)
+	currExchangeRate.Rates = append(currExchangeRate.Rates, currRate.Copy())
 
 	rates := make([]*ExchangeRates, 0, 1)
 
@@ -126,7 +105,7 @@ func (r *Repository) scanExchangeRateRows(rows pgx.Rows) ([]*ExchangeRates, erro
 			return nil, fmt.Errorf("cannot scan exchange rates: %w", err)
 		}
 
-		if !currExchangeRate.Date.Time.Equal(newDate.Time) {
+		if !currExchangeRate.Date.Equal(newDate.Time) {
 			rates = append(rates, currExchangeRate)
 
 			currExchangeRate = &ExchangeRates{

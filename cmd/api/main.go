@@ -2,6 +2,7 @@ package main
 
 import (
 	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/cbr/service"
 	"cbr-worker/internal/http"
 	"context"
 	"log/slog"
@@ -48,7 +49,9 @@ func run() int {
 		logger.With(slog.String("component", "repository")),
 	)
 
-	srv := http.NewServer(httpServerAddr, repo,
+	svc := service.New(repo)
+
+	srv := http.NewServer(httpServerAddr, svc,
 		logger.With(slog.String("component", "http-server")),
 	)
 
@@ -119,5 +122,3 @@ func run() int {
 func main() {
 	os.Exit(run())
 }
-
-// TODO: rename endpoint and add query params
