@@ -37,7 +37,7 @@ type RatesResponse struct {
 const getRatesRequestTImeout = time.Second * 5
 const unexpectedStatusCodeResponseBodySizeLimit = 4 * 1024
 
-func indenticalCharsetReader(_ string, input io.Reader) (io.Reader, error) {
+func identicalCharsetReader(_ string, input io.Reader) (io.Reader, error) {
 	return input, nil
 }
 
@@ -86,7 +86,7 @@ func (c *Client) GetRates(ctx context.Context, date time.Time) (*RatesResponse, 
 
 	// Dangerous conversion from Windows-1251 to UTF-8
 	decoder := xml.NewDecoder(resp.Body)
-	decoder.CharsetReader = indenticalCharsetReader
+	decoder.CharsetReader = identicalCharsetReader
 
 	var result RatesResponse
 	err = decoder.Decode(&result)

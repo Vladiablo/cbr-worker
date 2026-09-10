@@ -1,10 +1,9 @@
 package main
 
 import (
-	"cbr-worker/internal"
 	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/collector"
 	"context"
-	"fmt"
 	"net/http"
 
 	"log/slog"
@@ -22,27 +21,27 @@ const (
 )
 
 func run() int {
-	args := parseArgs()
-	if err := args.Validate(); err != nil {
-		fmt.Printf("Failed to validate arguments: %v\n", err)
-
-		return ExitCodeInvalidArgs
-	}
-
 	_ = godotenv.Load()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
-	cfg, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
+	args, err := parseArgs()
 	if err != nil {
-		logger.Error("Failed to parse database config. Exiting...", slog.Any("error", err))
+		logger.Error("Failed to parse arguments", slog.Any("error", err))
+
+		return ExitCodeInvalidArgs
+	}
+
+	cfg, err := pgxpool.ParseConfig(args.databaseUrl)
+	if err != nil {
+		logger.Error("Failed toDate parse database config. Exiting...", slog.Any("error", err))
 
 		return RuntimeDependenciesFailed
 	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
-		logger.Error("Failed to create database connection pool. Exiting...", slog.Any("error", err))
+		logger.Error("Failed toDate create database connection pool. Exiting...", slog.Any("error", err))
 
 		return RuntimeDependenciesFailed
 	}
@@ -59,7 +58,13 @@ func run() int {
 		logger.With(slog.String("component", "repository")),
 	)
 
-	collector := internal.NewCollector(cbrClient, repo,
+	collectorCfg := &collector.Config{
+		FromDate: args.fromDate,
+		ToDate:   args.toDate,
+		Timeout:  args.timeout,
+	}
+
+	c := collector.New(cbrClient, repo, collectorCfg,
 		logger.With(slog.String("component", "collector")),
 	)
 
@@ -70,11 +75,12 @@ func run() int {
 
 	// TODO: Add graceful shutdown
 
-	err = collector.Collect(ctx, args.from.Time, args.to.Time)
+	err = c.Collect(ctx)
 	if err != nil {
 		logger.Error("Failed to collect exchange rates",
-			slog.Time("from", args.from.Time),
-			slog.Time("to", args.to.Time),
+			slog.Time("fromDate", collectorCfg.FromDate),
+			slog.Time("toDate", collectorCfg.ToDate),
+			slog.Duration("timeout", collectorCfg.Timeout),
 			slog.Any("error", err),
 		)
 
