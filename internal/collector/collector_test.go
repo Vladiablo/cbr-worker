@@ -1,4 +1,4 @@
-package internal
+package collector
 
 import (
 	"reflect"
@@ -45,6 +45,14 @@ func Test_generateDateRange(t *testing.T) {
 				to:   time.Date(2020, time.March, 10, 0, 0, 0, 0, time.UTC),
 			},
 			nil,
+		},
+		{
+			"zero to zero",
+			args{
+				from: time.Time{},
+				to:   time.Time{},
+			},
+			[]time.Time{{}},
 		},
 	}
 	for _, tt := range tests {

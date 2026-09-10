@@ -1,4 +1,4 @@
-package internal
+package collector
 
 import (
 	"cbr-worker/internal/cbr"
@@ -14,35 +14,56 @@ import (
 type Collector struct {
 	cbrClient *cbr.Client
 	repo      *cbr.Repository
-	logger    *slog.Logger
+	cfg       *Config
+
+	logger *slog.Logger
 }
 
-func NewCollector(cbrClient *cbr.Client, repo *cbr.Repository, logger *slog.Logger) *Collector {
-	return &Collector{cbrClient: cbrClient, repo: repo, logger: logger}
+func New(cbrClient *cbr.Client, repo *cbr.Repository, cfg *Config, logger *slog.Logger) *Collector {
+	return &Collector{cbrClient: cbrClient, repo: repo, cfg: cfg, logger: logger}
 }
 
 func generateDateRange(from, to time.Time) iter.Seq[time.Time] {
 	return func(yield func(time.Time) bool) {
 		for !from.After(to) {
-			yield(from)
+			if !yield(from) {
+				return
+			}
 			from = from.AddDate(0, 0, 1)
 		}
 	}
 }
 
-func (c *Collector) Collect(ctx context.Context, from time.Time, to time.Time) error {
-	for date := range generateDateRange(from, to) {
+func (c *Collector) Collect(ctx context.Context) error {
+	if err := c.cfg.Validate(); err != nil {
+		return fmt.Errorf("config validation failed: %w", err)
+	}
+
+	// TODO: more reliable method to get latest rates date
+	if !c.cfg.FromDate.IsZero() && c.cfg.ToDate.IsZero() {
+		c.cfg.ToDate = time.Now().Truncate(24 * time.Hour)
+	}
+
+	for date := range generateDateRange(c.cfg.FromDate, c.cfg.ToDate) {
 		if err := c.CollectDate(ctx, date); err != nil {
-			return fmt.Errorf("failed collect date %s: %w", date.Format(time.DateOnly), err)
+			return fmt.Errorf("failed to collect date %s: %w", date.Format(time.DateOnly), err)
 		}
 	}
 
 	return nil
 }
 
+const defaultTimeout = 30 * time.Second
+
 func (c *Collector) CollectDate(ctx context.Context, wantDate time.Time) error {
-	// TODO: Make timeout configurable
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	var timeout time.Duration
+	if c.cfg.Timeout == 0 {
+		timeout = defaultTimeout
+	} else {
+		timeout = c.cfg.Timeout
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	c.logger.Info("CollectDate",
@@ -97,7 +118,3 @@ func (c *Collector) CollectDate(ctx context.Context, wantDate time.Time) error {
 
 	return nil
 }
-
-// TODO: console args: -from date, -to date
-// if only from set to to now
-// if only to return error
