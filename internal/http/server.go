@@ -1,7 +1,7 @@
 package http
 
 import (
-	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/cbr/service"
 	"context"
 	"errors"
 	"fmt"
@@ -17,10 +17,10 @@ type Server struct {
 	logger *slog.Logger
 }
 
-func NewServer(addr string, repo *cbr.Repository, logger *slog.Logger) *Server {
+func NewServer(addr string, svc *service.Service, logger *slog.Logger) *Server {
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      getRoutes(repo, logger),
+		Handler:      getRoutes(svc, logger),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}

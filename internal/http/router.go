@@ -1,20 +1,20 @@
 package http
 
 import (
-	"cbr-worker/internal/cbr"
-	"cbr-worker/internal/http/handlers"
+	"cbr-worker/internal/cbr/service"
+	"cbr-worker/internal/http/handlers/currency"
 	"log/slog"
 	"net/http"
 )
 
-func getRoutes(repo *cbr.Repository, logger *slog.Logger) *http.ServeMux {
-	currencyHandler := handlers.NewCurrencyHandler(
-		repo,
+func getRoutes(svc *service.Service, logger *slog.Logger) *http.ServeMux {
+	currencyHandler := currency.New(
+		svc,
 		logger.With(slog.String("component", "http")),
 	)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/getRates", currencyHandler.GetRates)
+	mux.HandleFunc("GET /v1/rates", currencyHandler.GetRates)
 
 	return mux
 }

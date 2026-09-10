@@ -32,8 +32,8 @@ func (c *Collector) Collect(ctx context.Context) error {
 	}
 
 	rates := cbr.ExchangeRates{
-		Date:       cbr.Date{Time: date},
-		Currencies: make([]*cbr.Currency, 0, len(cbrRates.Currencies)),
+		Date:  cbr.Date{Time: date},
+		Rates: make([]*cbr.ExchangeRate, 0, len(cbrRates.Currencies)),
 	}
 
 	for i := range cbrRates.Currencies {
@@ -46,7 +46,7 @@ func (c *Collector) Collect(ctx context.Context) error {
 
 		rate := strings.Replace(curr.VunitRate, ",", ".", 1)
 
-		rates.Currencies = append(rates.Currencies, &cbr.Currency{
+		rates.Rates = append(rates.Rates, &cbr.ExchangeRate{
 			Code:    curr.CharCode,
 			NumCode: int(numCode),
 			Rate:    rate,

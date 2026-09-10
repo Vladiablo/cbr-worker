@@ -6,28 +6,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-type Date struct {
-	time.Time
-}
-
-func (d *Date) MarshalJSON() ([]byte, error) {
-	return []byte(d.Format("\"2006-01-02\"")), nil
-}
-
-type Currency struct {
-	Code    string `json:"code"`
-	NumCode int    `json:"num_code"`
-	Rate    string `json:"rate"`
-}
-
-type ExchangeRates struct {
-	Date       Date        `json:"date"`
-	Currencies []*Currency `json:"currencies"`
-}
 
 type Repository struct {
 	pool   *pgxpool.Pool
@@ -40,46 +22,105 @@ func NewRepository(pool *pgxpool.Pool, logger *slog.Logger) *Repository {
 
 const dbTimeout = 10 * time.Second
 
-func (r *Repository) GetLatestExchangeRates(ctx context.Context) (*ExchangeRates, error) {
+func (r *Repository) GetLatestExchangeRates(ctx context.Context, curr []string) ([]*ExchangeRates, error) {
 	const sql = `
 SELECT rate_date, curr_code, curr_num_code, rate
 FROM exchange_rates
-WHERE rate_date = (
+WHERE
+rate_date = (
     SELECT MAX(rate_date)
     FROM exchange_rates
-);
+)
+AND ($1::text[] IS NULL OR curr_code = ANY($1))
+ORDER BY curr_code ASC
 `
 
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	rows, err := r.pool.Query(ctx, sql)
+	rows, err := r.pool.Query(ctx, sql, curr)
 	if err != nil {
 		r.logger.Error("Failed to query latest exchange rates", slog.Any("error", err))
 
 		return nil, fmt.Errorf("failed to query latest exchange rates: %w", err)
 	}
-	defer rows.Close()
 
-	var rates ExchangeRates
-	var date pgtype.Date
+	return r.scanExchangeRateRows(rows)
+}
 
-	for rows.Next() {
-		var currency Currency
+func (r *Repository) GetExchangeRatesByDates(ctx context.Context, curr []string, from, to time.Time) ([]*ExchangeRates, error) {
+	const sql = `
+SELECT rate_date, curr_code, curr_num_code, rate
+FROM exchange_rates
+WHERE
+	($1::text[] IS NULL OR curr_code = ANY($1))
+	AND (rate_date BETWEEN $2 AND $3)
+ORDER BY rate_date DESC, curr_code ASC
+`
 
-		err = rows.Scan(&date, &currency.Code, &currency.NumCode, &currency.Rate)
-		if err != nil {
-			r.logger.Error("Failed to scan exchange rate", slog.Any("error", err))
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
 
-			return nil, fmt.Errorf("failed to scan exchange rate: %w", err)
-		}
+	rows, err := r.pool.Query(ctx, sql, curr, from, to)
+	if err != nil {
+		r.logger.Error("Failed to query exchange rates",
+			slog.Any("curr", curr),
+			slog.Time("from", from),
+			slog.Time("to", to),
+			slog.Any("error", err),
+		)
 
-		rates.Currencies = append(rates.Currencies, &currency)
+		return nil, fmt.Errorf("failed to query exchange rates: %w", err)
 	}
 
-	rates.Date.Time = date.Time
+	return r.scanExchangeRateRows(rows)
+}
 
-	return &rates, nil
+func (r *Repository) scanExchangeRateRows(rows pgx.Rows) ([]*ExchangeRates, error) {
+	if !rows.Next() {
+		return nil, nil
+	}
+
+	var currDate pgtype.Date
+	var currRate ExchangeRate
+
+	err := rows.Scan(&currDate, &currRate.Code, &currRate.NumCode, &currRate.Rate)
+	if err != nil {
+		return nil, fmt.Errorf("cannot scan exchange rates: %w", err)
+	}
+
+	currExchangeRate := &ExchangeRates{
+		Date:  Date{Time: currDate.Time},
+		Rates: make([]*ExchangeRate, 0, 100),
+	}
+	currExchangeRate.Rates = append(currExchangeRate.Rates, currRate.Copy())
+
+	rates := make([]*ExchangeRates, 0, 1)
+
+	for rows.Next() {
+		var newDate pgtype.Date
+
+		err := rows.Scan(&newDate, &currRate.Code, &currRate.NumCode, &currRate.Rate)
+		if err != nil {
+			return nil, fmt.Errorf("cannot scan exchange rates: %w", err)
+		}
+
+		if !currExchangeRate.Date.Equal(newDate.Time) {
+			rates = append(rates, currExchangeRate)
+
+			currExchangeRate = &ExchangeRates{
+				Date: Date{Time: newDate.Time},
+			}
+
+			currDate = newDate
+		}
+
+		currExchangeRate.Rates = append(currExchangeRate.Rates, currRate.Copy())
+	}
+
+	rates = append(rates, currExchangeRate)
+
+	return rates, nil
 }
 
 func (r *Repository) InsertExchangeRates(ctx context.Context, rates *ExchangeRates) (int, error) {
@@ -104,15 +145,15 @@ FROM unnest(
 ON CONFLICT DO NOTHING;
 `
 
-	if len(rates.Currencies) == 0 {
+	if len(rates.Rates) == 0 {
 		return 0, fmt.Errorf("no currencies provided")
 	}
 
-	var textCodes = make([]string, 0, len(rates.Currencies))
-	var numCodes = make([]int, 0, len(rates.Currencies))
-	var currRates = make([]string, 0, len(rates.Currencies))
+	var textCodes = make([]string, 0, len(rates.Rates))
+	var numCodes = make([]int, 0, len(rates.Rates))
+	var currRates = make([]string, 0, len(rates.Rates))
 
-	for _, curr := range rates.Currencies {
+	for _, curr := range rates.Rates {
 		textCodes = append(textCodes, curr.Code)
 		numCodes = append(numCodes, curr.NumCode)
 		currRates = append(currRates, curr.Rate)
