@@ -6,9 +6,10 @@ import (
 )
 
 type Config struct {
-	FromDate time.Time
-	ToDate   time.Time
-	Timeout  time.Duration
+	FromDate    time.Time
+	ToDate      time.Time
+	Timeout     time.Duration
+	Concurrency int
 }
 
 func (c *Config) Validate() error {
@@ -22,6 +23,10 @@ func (c *Config) Validate() error {
 
 	if c.Timeout < 0 {
 		return fmt.Errorf("timeout cannot be negative")
+	}
+
+	if c.Concurrency < 0 {
+		return fmt.Errorf("concurrency cannot be negative")
 	}
 
 	return nil
