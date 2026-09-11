@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 type Collector struct {
@@ -44,10 +46,44 @@ func (c *Collector) Collect(ctx context.Context) error {
 		c.cfg.ToDate = time.Now().Truncate(24 * time.Hour)
 	}
 
-	for date := range generateDateRange(c.cfg.FromDate, c.cfg.ToDate) {
-		if err := c.CollectDate(ctx, date); err != nil {
-			return fmt.Errorf("failed to collect date %s: %w", date.Format(time.DateOnly), err)
+	eg, ctx := errgroup.WithContext(ctx)
+
+	dates := make(chan time.Time)
+	eg.Go(func() error {
+		defer close(dates)
+
+		for date := range generateDateRange(c.cfg.FromDate, c.cfg.ToDate) {
+			select {
+			case dates <- date:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
+
+		return nil
+	})
+
+	var workersCnt int
+	if c.cfg.Concurrency == 0 {
+		workersCnt = 1
+	} else {
+		workersCnt = c.cfg.Concurrency
+	}
+
+	for range workersCnt {
+		eg.Go(func() error {
+			for date := range dates {
+				if err := c.CollectDate(ctx, date); err != nil {
+					return fmt.Errorf("failed to collect date %s: %w", date.Format(time.DateOnly), err)
+				}
+			}
+
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return err
 	}
 
 	return nil

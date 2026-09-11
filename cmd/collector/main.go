@@ -59,9 +59,10 @@ func run() int {
 	)
 
 	collectorCfg := &collector.Config{
-		FromDate: args.fromDate,
-		ToDate:   args.toDate,
-		Timeout:  args.timeout,
+		FromDate:    args.fromDate,
+		ToDate:      args.toDate,
+		Timeout:     args.timeout,
+		Concurrency: args.concurrency,
 	}
 
 	c := collector.New(cbrClient, repo, collectorCfg,
@@ -81,6 +82,7 @@ func run() int {
 			slog.Time("fromDate", collectorCfg.FromDate),
 			slog.Time("toDate", collectorCfg.ToDate),
 			slog.Duration("timeout", collectorCfg.Timeout),
+			slog.Int("concurrency", collectorCfg.Concurrency),
 			slog.Any("error", err),
 		)
 

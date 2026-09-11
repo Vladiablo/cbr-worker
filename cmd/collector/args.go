@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -16,7 +17,7 @@ type CollectorArgs struct {
 
 	timeout time.Duration
 
-	// TODO: Add concurrency
+	concurrency int
 }
 
 type DateFlag struct {
@@ -75,11 +76,21 @@ func (a *CollectorArgs) parseEnv() error {
 		}
 	}
 
-	a.applyParams(&CollectorArgs{
+	var concurrency int64
+	strConcurrency := os.Getenv("COLLECTOR_CONCURRENCY")
+	if strConcurrency != "" {
+		concurrency, err = strconv.ParseInt(strConcurrency, 10, 0)
+		if err != nil {
+			return fmt.Errorf("COLLECTOR_CONCURRENCY has invalid format: %w", err)
+		}
+	}
+
+	a.applyArgs(&CollectorArgs{
 		databaseUrl: databaseUrl,
 		fromDate:    fromDate,
 		toDate:      toDate,
 		timeout:     timeout,
+		concurrency: int(concurrency),
 	})
 
 	return nil
@@ -100,36 +111,44 @@ func (a *CollectorArgs) parseCmdLineArgs() error {
 	var timeout time.Duration
 	fs.DurationVar(&timeout, "timeout", 0, "")
 
+	var concurrency int
+	fs.IntVar(&concurrency, "concurrency", 0, "")
+
 	err := fs.Parse(os.Args[1:])
 	if err != nil && !errors.Is(err, flag.ErrHelp) {
 		return fmt.Errorf("failed to parse command line arguments: %w", err)
 	}
 
-	a.applyParams(&CollectorArgs{
+	a.applyArgs(&CollectorArgs{
 		databaseUrl: databaseUrl,
 		fromDate:    fromDate.Time,
 		toDate:      toDate.Time,
 		timeout:     timeout,
+		concurrency: concurrency,
 	})
 
 	return nil
 }
 
-func (a *CollectorArgs) applyParams(params *CollectorArgs) {
+func (a *CollectorArgs) applyArgs(other *CollectorArgs) {
 	if a.databaseUrl == "" {
-		a.databaseUrl = params.databaseUrl
+		a.databaseUrl = other.databaseUrl
 	}
 
 	if a.fromDate.IsZero() {
-		a.fromDate = params.fromDate
+		a.fromDate = other.fromDate
 	}
 
 	if a.toDate.IsZero() {
-		a.toDate = params.toDate
+		a.toDate = other.toDate
 	}
 
 	if a.timeout == 0 {
-		a.timeout = params.timeout
+		a.timeout = other.timeout
+	}
+
+	if a.concurrency == 0 {
+		a.concurrency = other.concurrency
 	}
 }
 
