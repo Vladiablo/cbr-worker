@@ -56,7 +56,9 @@ func (c *Collector) Collect(ctx context.Context) error {
 			select {
 			case dates <- date:
 			case <-ctx.Done():
-				return ctx.Err()
+				c.logger.Info("Collector shutting down...")
+
+				return nil
 			}
 		}
 
@@ -73,7 +75,9 @@ func (c *Collector) Collect(ctx context.Context) error {
 	for range workersCnt {
 		eg.Go(func() error {
 			for date := range dates {
-				if err := c.CollectDate(ctx, date); err != nil {
+				if err := c.CollectDate(context.Background(), date); err != nil {
+					c.logger.Error("Failed to collect date", "date", date, "err", err)
+
 					return fmt.Errorf("failed to collect date %s: %w", date.Format(time.DateOnly), err)
 				}
 			}
