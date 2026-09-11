@@ -5,6 +5,9 @@ import (
 	"cbr-worker/internal/collector"
 	"context"
 	"net/http"
+	"os/signal"
+	"sync"
+	"sync/atomic"
 
 	"log/slog"
 	"os"
@@ -15,9 +18,10 @@ import (
 )
 
 const (
-	ExitCodeInvalidArgs       = 1
-	RuntimeDependenciesFailed = 2
-	CollectFailed             = 3
+	ExitCodeInvalidArgs           = 1
+	RuntimeDependenciesFailed     = 2
+	CollectFailed                 = 3
+	GracefulShutdownPeriodExpired = 4
 )
 
 func run() int {
@@ -74,24 +78,70 @@ func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// TODO: Add graceful shutdown
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 
-	err = c.Collect(ctx)
-	if err != nil {
-		logger.Error("Failed to collect exchange rates",
-			slog.Time("fromDate", collectorCfg.FromDate),
-			slog.Time("toDate", collectorCfg.ToDate),
-			slog.Duration("timeout", collectorCfg.Timeout),
-			slog.Int("concurrency", collectorCfg.Concurrency),
-			slog.Any("error", err),
-		)
+	var collectorErr atomic.Pointer[error]
 
-		return CollectFailed
+	go func() {
+		defer wg.Done()
+		defer cancel()
+
+		err = c.Collect(ctx)
+		if err != nil {
+			logger.Error("Failed to collect exchange rates",
+				slog.Time("fromDate", collectorCfg.FromDate),
+				slog.Time("toDate", collectorCfg.ToDate),
+				slog.Duration("timeout", collectorCfg.Timeout),
+				slog.Int("concurrency", collectorCfg.Concurrency),
+				slog.Any("error", err),
+			)
+
+			collectorErr.CompareAndSwap(nil, &err)
+		}
+	}()
+
+	doneCh := make(chan struct{})
+	go func() {
+		defer close(doneCh)
+
+		wg.Wait()
+	}()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+
+	ctxDoneCh := ctx.Done()
+
+	const gracefulShutdownPeriod = 10 * time.Second
+	var timeoutCh <-chan time.Time
+
+	for {
+		select {
+		case sig := <-sigCh:
+			logger.Info("Received signal, shutting down...", slog.String("signal", sig.String()))
+
+			cancel()
+
+		case <-ctxDoneCh:
+			ctxDoneCh = nil
+			timeoutCh = time.After(gracefulShutdownPeriod)
+
+		case <-timeoutCh:
+			logger.Error("Graceful shutdown period expired", slog.Duration("timeout", gracefulShutdownPeriod))
+
+			return GracefulShutdownPeriodExpired
+
+		case <-doneCh:
+			if collectorErr.Load() != nil {
+				return CollectFailed
+			}
+
+			logger.Info("Collector finished")
+			return 0
+
+		}
 	}
-
-	logger.Info("Collector succeeded")
-
-	return 0
 }
 
 func main() {
