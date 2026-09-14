@@ -1,8 +1,8 @@
 package main
 
 import (
-	"cbr-worker/internal"
 	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/collector"
 	"context"
 	"net/http"
 
@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	dbConnTimeout  = 10 * time.Second
-	collectTimeout = 30 * time.Second
+	ExitCodeInvalidArgs       = 1
+	RuntimeDependenciesFailed = 2
+	CollectFailed             = 3
 )
 
 func run() int {
@@ -24,20 +25,25 @@ func run() int {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
-	cfg, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
+	args, err := parseArgs()
 	if err != nil {
-		logger.Error("Failed to parse database config. Exiting...", slog.Any("error", err))
-		return 1
+		logger.Error("Failed to parse arguments", slog.Any("error", err))
+
+		return ExitCodeInvalidArgs
 	}
 
-	defCtx := context.Background()
-	ctx, cancel := context.WithTimeout(defCtx, dbConnTimeout)
-	defer cancel()
-
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	cfg, err := pgxpool.ParseConfig(args.databaseUrl)
 	if err != nil {
-		logger.Error("Failed to create database connection pool. Exiting...", slog.Any("error", err))
-		return 2
+		logger.Error("Failed toDate parse database config. Exiting...", slog.Any("error", err))
+
+		return RuntimeDependenciesFailed
+	}
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		logger.Error("Failed toDate create database connection pool. Exiting...", slog.Any("error", err))
+
+		return RuntimeDependenciesFailed
 	}
 	defer pool.Close()
 
@@ -52,22 +58,37 @@ func run() int {
 		logger.With(slog.String("component", "repository")),
 	)
 
-	collector := internal.NewCollector(cbrClient, repo,
+	collectorCfg := &collector.Config{
+		FromDate: args.fromDate,
+		ToDate:   args.toDate,
+		Timeout:  args.timeout,
+	}
+
+	c := collector.New(cbrClient, repo, collectorCfg,
 		logger.With(slog.String("component", "collector")),
 	)
 
 	logger.Info("Starting collector...")
 
-	ctx, cancel = context.WithTimeout(defCtx, collectTimeout)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err = collector.Collect(ctx)
+	// TODO: Add graceful shutdown
+
+	err = c.Collect(ctx)
 	if err != nil {
-		logger.Error("Failed to collect exchange rates", slog.Any("error", err))
-		return 3
+		logger.Error("Failed to collect exchange rates",
+			slog.Time("fromDate", collectorCfg.FromDate),
+			slog.Time("toDate", collectorCfg.ToDate),
+			slog.Duration("timeout", collectorCfg.Timeout),
+			slog.Any("error", err),
+		)
+
+		return CollectFailed
 	}
 
 	logger.Info("Collector succeeded")
+
 	return 0
 }
 
