@@ -17,6 +17,12 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// TODO: Add in-memory cache
+// Just load all rates at init
+// Refresh every 5 minutes
+// Immutable snapshots and atomic pointers
+// Add cached repo, repo interface
+
 func New(svc *service.Service, logger *slog.Logger) *Handler {
 	return &Handler{svc: svc, logger: logger}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/cbr/repository"
 	"cbr-worker/internal/collector"
 	"context"
 	"net/http"
@@ -58,7 +59,7 @@ func run() int {
 		logger.With(slog.String("component", "cbr-client")),
 	)
 
-	repo := cbr.NewRepository(pool,
+	repo := repository.NewPgRepository(pool,
 		logger.With(slog.String("component", "repository")),
 	)
 
