@@ -12,6 +12,8 @@ import (
 	"resty.dev/v3"
 )
 
+// TODO: Add backoff retry
+
 type Client struct {
 	httpClient *resty.Client
 

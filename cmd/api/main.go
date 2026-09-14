@@ -1,7 +1,7 @@
 package main
 
 import (
-	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/cbr/repository"
 	"cbr-worker/internal/cbr/service"
 	"cbr-worker/internal/http"
 	"context"
@@ -45,11 +45,18 @@ func run() int {
 		defer pool.Close()
 	}
 
-	repo := cbr.NewRepository(pool,
-		logger.With(slog.String("component", "repository")),
+	repo := repository.NewPgRepository(pool,
+		logger.With(slog.String("component", "pg-repo")),
 	)
 
-	svc := service.New(repo)
+	cachedRepoCfg := &repository.CachedRepositoryConfig{
+		CacheUpdateInterval: 5 * time.Minute,
+	}
+	cachedRepo := repository.NewCachedRepository(repo, cachedRepoCfg,
+		logger.With(slog.String("component", "cached-repo")),
+	)
+
+	svc := service.New(cachedRepo)
 
 	srv := http.NewServer(httpServerAddr, svc,
 		logger.With(slog.String("component", "http-server")),

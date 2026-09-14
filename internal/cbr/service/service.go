@@ -1,11 +1,13 @@
 package service
 
-import "cbr-worker/internal/cbr"
+import (
+	"cbr-worker/internal/cbr/repository"
+)
 
 type Service struct {
-	repo *cbr.Repository
+	repo repository.Repository
 }
 
-func New(repo *cbr.Repository) *Service {
+func New(repo repository.Repository) *Service {
 	return &Service{repo: repo}
 }
