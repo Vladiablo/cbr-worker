@@ -45,6 +45,9 @@ func run() int {
 		defer pool.Close()
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	repo := repository.NewPgRepository(pool,
 		logger.With(slog.String("component", "pg-repo")),
 	)
@@ -56,14 +59,17 @@ func run() int {
 		logger.With(slog.String("component", "cached-repo")),
 	)
 
+	if err := cachedRepo.Init(ctx); err != nil {
+		logger.Error("Failed to init cached repository. Exiting...", slog.Any("error", err))
+
+		return 1
+	}
+
 	svc := service.New(cachedRepo)
 
 	srv := http.NewServer(httpServerAddr, svc,
 		logger.With(slog.String("component", "http-server")),
 	)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
