@@ -16,7 +16,7 @@ type CachedRepository struct {
 	cfg  *CachedRepositoryConfig
 
 	cache            atomic.Pointer[map[time.Time]*cbr.ExchangeRates]
-	latestRatesCache atomic.Pointer[[]*cbr.ExchangeRates]
+	latestRatesCache atomic.Pointer[*cbr.ExchangeRates]
 
 	logger *slog.Logger
 
@@ -105,7 +105,7 @@ func (r *CachedRepository) updateCache(ctx context.Context) error {
 		newRatesCache[rate.Date.Time] = rate
 	}
 
-	r.latestRatesCache.Store(&latestRates)
+	r.latestRatesCache.Store(&latestRates[0])
 	r.cache.Store(&newRatesCache)
 
 	r.logger.Info("Done updating CachedRepository cache")
@@ -121,21 +121,14 @@ func (r *CachedRepository) GetLatestExchangeRates(_ context.Context, curr []stri
 		return nil, fmt.Errorf("cache is empty")
 	}
 
-	// TODO: implement currency filter
+	result := *latestRatesCache
 	if len(curr) > 0 {
-		result := cbr.ExchangeRates{
-			Date:  cbr.Date{},
-			Rates: make([]*cbr.ExchangeRate, 0, len(curr)),
-		}
-
-		// TODO: Impl actual filtering
-
-		return []*cbr.ExchangeRates{
-			&result,
-		}, nil
+		result = filterRates(result, curr)
 	}
 
-	return *latestRatesCache, nil
+	return []*cbr.ExchangeRates{
+		result,
+	}, nil
 }
 
 func (r *CachedRepository) GetExchangeRatesByDates(_ context.Context, curr []string, from, to time.Time) ([]*cbr.ExchangeRates, error) {
@@ -146,15 +139,13 @@ func (r *CachedRepository) GetExchangeRatesByDates(_ context.Context, curr []str
 		return nil, fmt.Errorf("cache is empty")
 	}
 
-	// TODO: implement currency filter
-	if len(curr) > 0 {
-		//return r.repo.GetExchangeRatesByDates(ctx, curr, from, to)
-	}
-
 	result := make([]*cbr.ExchangeRates, 0, int(to.Sub(from).Hours())/24)
 	for date := from; !date.After(to); date = date.AddDate(0, 0, 1) {
 		rates, ok := (*cache)[date]
 		if ok {
+			if len(curr) > 0 {
+				rates = filterRates(rates, curr)
+			}
 			result = append(result, rates)
 		}
 	}
@@ -168,4 +159,29 @@ func (r *CachedRepository) GetExchangeRatesByDates(_ context.Context, curr []str
 
 func (r *CachedRepository) InsertExchangeRates(ctx context.Context, rates *cbr.ExchangeRates) (int, error) {
 	return r.repo.InsertExchangeRates(ctx, rates)
+}
+
+func findRate(rates []*cbr.ExchangeRate, curr string) int {
+	for i := range rates {
+		if rates[i].Code == curr {
+			return i
+		}
+	}
+
+	return -1
+}
+
+func filterRates(rates *cbr.ExchangeRates, curr []string) *cbr.ExchangeRates {
+	result := cbr.ExchangeRates{
+		Date:  rates.Date,
+		Rates: make([]*cbr.ExchangeRate, 0, len(curr)),
+	}
+
+	for i := range curr {
+		if idx := findRate(rates.Rates, curr[i]); idx >= 0 {
+			result.Rates = append(result.Rates, rates.Rates[idx])
+		}
+	}
+
+	return &result
 }
