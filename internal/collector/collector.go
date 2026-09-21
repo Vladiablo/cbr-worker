@@ -2,6 +2,7 @@ package collector
 
 import (
 	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/cbr/repository"
 	"context"
 	"fmt"
 	"iter"
@@ -15,14 +16,28 @@ import (
 
 type Collector struct {
 	cbrClient *cbr.Client
-	repo      *cbr.Repository
+	repo      *repository.PgRepository
 	cfg       *Config
 
 	logger *slog.Logger
 }
 
-func New(cbrClient *cbr.Client, repo *cbr.Repository, cfg *Config, logger *slog.Logger) *Collector {
-	return &Collector{cbrClient: cbrClient, repo: repo, cfg: cfg, logger: logger}
+func New(
+	cbrClient *cbr.Client,
+	repo *repository.PgRepository,
+	cfg *Config,
+	logger *slog.Logger,
+) (*Collector, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	return &Collector{
+		cbrClient: cbrClient,
+		repo:      repo,
+		cfg:       cfg,
+		logger:    logger,
+	}, nil
 }
 
 func generateDateRange(from, to time.Time) iter.Seq[time.Time] {
@@ -37,13 +52,12 @@ func generateDateRange(from, to time.Time) iter.Seq[time.Time] {
 }
 
 func (c *Collector) Collect(ctx context.Context) error {
-	if err := c.cfg.Validate(); err != nil {
-		return fmt.Errorf("config validation failed: %w", err)
-	}
+	fromDate := c.cfg.FromDate
+	toDate := c.cfg.ToDate
 
 	// TODO: more reliable method to get latest rates date
-	if !c.cfg.FromDate.IsZero() && c.cfg.ToDate.IsZero() {
-		c.cfg.ToDate = time.Now().Truncate(24 * time.Hour)
+	if !fromDate.IsZero() && toDate.IsZero() {
+		toDate = time.Now().Truncate(24 * time.Hour)
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
@@ -52,7 +66,7 @@ func (c *Collector) Collect(ctx context.Context) error {
 	eg.Go(func() error {
 		defer close(dates)
 
-		for date := range generateDateRange(c.cfg.FromDate, c.cfg.ToDate) {
+		for date := range generateDateRange(fromDate, toDate) {
 			select {
 			case dates <- date:
 			case <-ctx.Done():

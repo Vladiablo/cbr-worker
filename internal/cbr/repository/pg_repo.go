@@ -1,6 +1,7 @@
-package cbr
+package repository
 
 import (
+	"cbr-worker/internal/cbr"
 	"context"
 	"fmt"
 	"log/slog"
@@ -11,18 +12,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Repository struct {
+type PgRepository struct {
 	pool   *pgxpool.Pool
 	logger *slog.Logger
 }
 
-func NewRepository(pool *pgxpool.Pool, logger *slog.Logger) *Repository {
-	return &Repository{pool: pool, logger: logger}
+func NewPgRepository(pool *pgxpool.Pool, logger *slog.Logger) *PgRepository {
+	return &PgRepository{pool: pool, logger: logger}
 }
 
 const dbTimeout = 10 * time.Second
 
-func (r *Repository) GetLatestExchangeRates(ctx context.Context, curr []string) ([]*ExchangeRates, error) {
+func (r *PgRepository) GetLatestExchangeRates(ctx context.Context, curr []string) ([]*cbr.ExchangeRates, error) {
 	const sql = `
 SELECT rate_date, curr_code, curr_num_code, rate
 FROM exchange_rates
@@ -48,7 +49,7 @@ ORDER BY curr_code ASC
 	return r.scanExchangeRateRows(rows)
 }
 
-func (r *Repository) GetExchangeRatesByDates(ctx context.Context, curr []string, from, to time.Time) ([]*ExchangeRates, error) {
+func (r *PgRepository) GetExchangeRatesByDates(ctx context.Context, curr []string, from, to time.Time) ([]*cbr.ExchangeRates, error) {
 	const sql = `
 SELECT rate_date, curr_code, curr_num_code, rate
 FROM exchange_rates
@@ -76,26 +77,26 @@ ORDER BY rate_date DESC, curr_code ASC
 	return r.scanExchangeRateRows(rows)
 }
 
-func (r *Repository) scanExchangeRateRows(rows pgx.Rows) ([]*ExchangeRates, error) {
+func (r *PgRepository) scanExchangeRateRows(rows pgx.Rows) ([]*cbr.ExchangeRates, error) {
 	if !rows.Next() {
 		return nil, nil
 	}
 
 	var currDate pgtype.Date
-	var currRate ExchangeRate
+	var currRate cbr.ExchangeRate
 
 	err := rows.Scan(&currDate, &currRate.Code, &currRate.NumCode, &currRate.Rate)
 	if err != nil {
 		return nil, fmt.Errorf("cannot scan exchange rates: %w", err)
 	}
 
-	currExchangeRate := &ExchangeRates{
-		Date:  Date{Time: currDate.Time},
-		Rates: make([]*ExchangeRate, 0, 100),
+	currExchangeRate := &cbr.ExchangeRates{
+		Date:  cbr.Date{Time: currDate.Time},
+		Rates: make([]*cbr.ExchangeRate, 0, 100),
 	}
 	currExchangeRate.Rates = append(currExchangeRate.Rates, currRate.Copy())
 
-	rates := make([]*ExchangeRates, 0, 1)
+	rates := make([]*cbr.ExchangeRates, 0, 1)
 
 	for rows.Next() {
 		var newDate pgtype.Date
@@ -108,8 +109,8 @@ func (r *Repository) scanExchangeRateRows(rows pgx.Rows) ([]*ExchangeRates, erro
 		if !currExchangeRate.Date.Equal(newDate.Time) {
 			rates = append(rates, currExchangeRate)
 
-			currExchangeRate = &ExchangeRates{
-				Date: Date{Time: newDate.Time},
+			currExchangeRate = &cbr.ExchangeRates{
+				Date: cbr.Date{Time: newDate.Time},
 			}
 
 			currDate = newDate
@@ -123,7 +124,7 @@ func (r *Repository) scanExchangeRateRows(rows pgx.Rows) ([]*ExchangeRates, erro
 	return rates, nil
 }
 
-func (r *Repository) InsertExchangeRates(ctx context.Context, rates *ExchangeRates) (int, error) {
+func (r *PgRepository) InsertExchangeRates(ctx context.Context, rates *cbr.ExchangeRates) (int, error) {
 	const sql = `
 INSERT INTO exchange_rates (
 	rate_date,

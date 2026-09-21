@@ -2,6 +2,7 @@ package main
 
 import (
 	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/cbr/repository"
 	"cbr-worker/internal/collector"
 	"context"
 	"net/http"
@@ -29,14 +30,14 @@ func run() int {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
-	args, err := parseArgs()
+	args, err := ParseArgs()
 	if err != nil {
 		logger.Error("Failed to parse arguments", slog.Any("error", err))
 
 		return ExitCodeInvalidArgs
 	}
 
-	cfg, err := pgxpool.ParseConfig(args.databaseUrl)
+	cfg, err := pgxpool.ParseConfig(args.DatabaseUrl)
 	if err != nil {
 		logger.Error("Failed toDate parse database config. Exiting...", slog.Any("error", err))
 
@@ -58,20 +59,24 @@ func run() int {
 		logger.With(slog.String("component", "cbr-client")),
 	)
 
-	repo := cbr.NewRepository(pool,
+	repo := repository.NewPgRepository(pool,
 		logger.With(slog.String("component", "repository")),
 	)
 
 	collectorCfg := &collector.Config{
-		FromDate:    args.fromDate,
-		ToDate:      args.toDate,
-		Timeout:     args.timeout,
-		Concurrency: args.concurrency,
+		FromDate:    args.FromDate.Time,
+		ToDate:      args.ToDate.Time,
+		Timeout:     args.Timeout,
+		Concurrency: args.Concurrency,
 	}
 
-	c := collector.New(cbrClient, repo, collectorCfg,
+	c, err := collector.New(cbrClient, repo, collectorCfg,
 		logger.With(slog.String("component", "collector")),
 	)
+	if err != nil {
+		logger.Error("Failed toDate create collector. Exiting...", slog.Any("error", err))
+		return RuntimeDependenciesFailed
+	}
 
 	logger.Info("Starting collector...")
 
