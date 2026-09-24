@@ -29,6 +29,20 @@ func (h *Handler) writeErr(w http.ResponseWriter, err error, statusCode int) {
 	}
 }
 
+// GetRates
+//
+//	@Summary		Get rates
+//	@Description	Get list of CBR exchange rates
+//	@Tags			rates
+//	@Produce		json
+//	@Param			currency	query		[]string	false	"List of currencies to get exchange rates for. By default, get exchange rates for all available currencies"		CollectionFormat(csv)	Example(AUD,USD)
+//	@Param			fromDate	query		string		false	"ISO 8601 formatted date specifying the start date of exchange rates list. Must be used together with `toDate`"	Format(date)			Example(2006-01-02)
+//	@Param			toDate		query		string		false	"ISO 8601 formatted date specifying the end date of exchange rates list. Must be used together with `fromDate`"	Format(date)			Example(2006-01-31)
+//	@Success		200			{array}		cbr.ExchangeRates
+//	@Failure		400			{object}	ErrorResponse
+//	@Failure		404			{object}	ErrorResponse
+//	@Failure		500			{object}	ErrorResponse
+//	@Router			/rates [get]
 func (h *Handler) GetRates(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 

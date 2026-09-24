@@ -1,0 +1,99 @@
+basePath: /v1
+definitions:
+  cbr.ExchangeRate:
+    description: Exchange rate for given currency
+    properties:
+      code:
+        description: Currency text code according ISO 4217
+        example: USD
+        type: string
+      num_code:
+        description: Currency numeric code according to ISO 4217 (without leading
+          zeros
+        example: 840
+        type: integer
+      rate:
+        description: Currency exchange rate
+        example: "28.4821000000"
+        type: string
+    type: object
+  cbr.ExchangeRates:
+    description: Array of exchange rates for given currencies at given date
+    properties:
+      date:
+        description: Date of exchange rates
+        example: "2006-01-11"
+        type: string
+      rates:
+        description: Array of exchange rates
+        items:
+          $ref: '#/definitions/cbr.ExchangeRate'
+        type: array
+    type: object
+  currency.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+externalDocs:
+  description: OpenAPI
+  url: https://swagger.io/resources/open-api/
+host: localhost:8080
+info:
+  contact: {}
+  description: API to get CBR exchange rates
+  title: CBR Worker API
+  version: "1.0"
+paths:
+  /rates:
+    get:
+      description: Get list of CBR exchange rates
+      parameters:
+      - collectionFormat: csv
+        description: List of currencies to get exchange rates for. By default, get
+          exchange rates for all available currencies
+        example: AUD,USD
+        in: query
+        items:
+          type: string
+        name: currency
+        type: array
+      - description: ISO 8601 formatted date specifying the start date of exchange
+          rates list. Must be used together with `toDate`
+        example: "2006-01-02"
+        format: date
+        in: query
+        name: fromDate
+        type: string
+      - description: ISO 8601 formatted date specifying the end date of exchange rates
+          list. Must be used together with `fromDate`
+        example: "2006-01-31"
+        format: date
+        in: query
+        name: toDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/cbr.ExchangeRates'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/currency.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/currency.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/currency.ErrorResponse'
+      summary: Get rates
+      tags:
+      - rates
+swagger: "2.0"
