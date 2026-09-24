@@ -1,7 +1,7 @@
 package main
 
 import (
-	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/cbr/client"
 	"cbr-worker/internal/cbr/repository"
 	"cbr-worker/internal/collector"
 	"context"
@@ -55,9 +55,23 @@ func run() int {
 	httpClient := &http.Client{
 		Timeout: time.Second * 30,
 	}
-	cbrClient := cbr.NewClient(httpClient,
+
+	clientCfg := client.DefaultConfig()
+	clientCfg.Merge(&client.Config{
+		MaxRetries:               args.MaxRetries,
+		RetryInitialInterval:     args.RetryInitialInterval,
+		RetryMaxInterval:         args.RetryMaxInterval,
+		RetryRandomizationFactor: args.RetryRandomizationFactor,
+		RetryMultiplier:          args.RetryMultiplier,
+	})
+
+	cbrClient, err := client.New(httpClient, clientCfg,
 		logger.With(slog.String("component", "cbr-client")),
 	)
+	if err != nil {
+		logger.Error("Failed to create CBR client. Exiting...", slog.Any("error", err))
+		return RuntimeDependenciesFailed
+	}
 
 	repo := repository.NewPgRepository(pool,
 		logger.With(slog.String("component", "repository")),
@@ -74,7 +88,7 @@ func run() int {
 		logger.With(slog.String("component", "collector")),
 	)
 	if err != nil {
-		logger.Error("Failed toDate create collector. Exiting...", slog.Any("error", err))
+		logger.Error("Failed to create collector. Exiting...", slog.Any("error", err))
 		return RuntimeDependenciesFailed
 	}
 

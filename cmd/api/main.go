@@ -135,7 +135,3 @@ func run() int {
 func main() {
 	os.Exit(run())
 }
-
-//TODO
-// collector backoff retries
-// swaggo doc

@@ -17,9 +17,7 @@ type ExchangeRate struct {
 }
 
 func (r *ExchangeRate) Copy() *ExchangeRate {
-	cpy := *r
-
-	return &cpy
+	return new(*r)
 }
 
 type ExchangeRates struct {

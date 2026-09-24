@@ -1,4 +1,4 @@
-package cbr
+package client
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cenkalti/backoff/v7"
 	"resty.dev/v3"
 )
 
-// TODO: Add backoff retry
-
 type Client struct {
 	httpClient *resty.Client
+	cfg        *Config
 
 	logger *slog.Logger
 }
@@ -36,24 +36,25 @@ type RatesResponse struct {
 	Currencies []*RawCurrency `xml:"Valute"`
 }
 
-const getRatesRequestTImeout = time.Second * 5
-const unexpectedStatusCodeResponseBodySizeLimit = 4 * 1024
-
 func identicalCharsetReader(_ string, input io.Reader) (io.Reader, error) {
 	return input, nil
 }
 
-func NewClient(httpClient *http.Client, logger *slog.Logger) *Client {
-	client := resty.NewWithClient(httpClient)
-	client.SetBaseURL("http://www.cbr.ru")
-	//client.SetDebug(true)
+func New(httpClient *http.Client, cfg *Config, logger *slog.Logger) (*Client, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
 
-	return &Client{logger: logger, httpClient: client}
+	client := resty.NewWithClient(httpClient)
+	client.SetBaseURL(cfg.BaseUrl)
+
+	// client.SetDebug(true)
+
+	return &Client{logger: logger, cfg: cfg, httpClient: client}, nil
 }
 
-func (c *Client) GetRates(ctx context.Context, date time.Time) (*RatesResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, getRatesRequestTImeout)
-	defer cancel()
+func (c *Client) executeGetRates(ctx context.Context, date time.Time) (*RatesResponse, error) {
+	const unexpectedStatusCodeResponseBodySizeLimit = 4 * 1024
 
 	req := c.httpClient.R().WithContext(ctx)
 
@@ -63,6 +64,8 @@ func (c *Client) GetRates(ctx context.Context, date time.Time) (*RatesResponse, 
 
 	resp, err := req.Get("/scripts/XML_daily_eng.asp")
 	if err != nil {
+		c.logger.Error("Failed to execute GET rates request", "error", err)
+
 		return nil, fmt.Errorf("failed to execute request to CBR: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -83,7 +86,12 @@ func (c *Client) GetRates(ctx context.Context, date time.Time) (*RatesResponse, 
 			slog.String("body", string(body[:n])),
 		)
 
-		return nil, fmt.Errorf("CBR responded with unexpected HTTP status code: %d", resp.StatusCode())
+		err = fmt.Errorf("CBR responded with unexpected HTTP status code: %d", resp.StatusCode())
+		if resp.StatusCode() >= 400 && resp.StatusCode() < 500 {
+			return nil, backoff.Permanent(err)
+		}
+
+		return nil, err
 	}
 
 	// Dangerous conversion from Windows-1251 to UTF-8
@@ -96,9 +104,30 @@ func (c *Client) GetRates(ctx context.Context, date time.Time) (*RatesResponse, 
 		return nil, fmt.Errorf("failed to decode CBR response body: %w", err)
 	}
 
+	return &result, nil
+}
+
+func (c *Client) GetRates(ctx context.Context, date time.Time) (*RatesResponse, error) {
+	result, err := backoff.Retry(ctx,
+		func() (*RatesResponse, error) {
+			return c.executeGetRates(ctx, date)
+		},
+		backoff.WithMaxTries(uint(c.cfg.MaxRetries+1)),
+		backoff.WithBackOff(&backoff.ExponentialBackOff{
+			InitialInterval:     c.cfg.RetryInitialInterval,
+			RandomizationFactor: c.cfg.RetryRandomizationFactor,
+			Multiplier:          c.cfg.RetryMultiplier,
+			MaxInterval:         c.cfg.RetryMaxInterval,
+		}),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
 	if len(result.Currencies) == 0 {
 		return nil, fmt.Errorf("no currencies found")
 	}
 
-	return &result, nil
+	return result, nil
 }
