@@ -16,6 +16,16 @@ import (
 	"github.com/joho/godotenv"
 )
 
+//	@title			CBR Worker API
+//	@version		1.0
+//	@description	API to get CBR exchange rates
+
+//	@host		localhost:8080
+//	@BasePath	/v1
+
+//	@externalDocs.description	OpenAPI
+//	@externalDocs.url			https://swagger.io/resources/open-api/
+
 const (
 	httpServerAddr = ":8080"
 	dbConnTimeout  = 10 * time.Second

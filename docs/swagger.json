@@ -1,0 +1,136 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "API to get CBR exchange rates",
+        "title": "CBR Worker API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/v1",
+    "paths": {
+        "/rates": {
+            "get": {
+                "description": "Get list of CBR exchange rates",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rates"
+                ],
+                "summary": "Get rates",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "example": "AUD,USD",
+                        "description": "List of currencies to get exchange rates for. By default, get exchange rates for all available currencies",
+                        "name": "currency",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "format": "date",
+                        "example": "2006-01-02",
+                        "description": "ISO 8601 formatted date specifying the start date of exchange rates list. Must be used together with `toDate`",
+                        "name": "fromDate",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "format": "date",
+                        "example": "2006-01-31",
+                        "description": "ISO 8601 formatted date specifying the end date of exchange rates list. Must be used together with `fromDate`",
+                        "name": "toDate",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/cbr.ExchangeRates"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/currency.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/currency.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/currency.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "cbr.ExchangeRate": {
+            "description": "Exchange rate for given currency",
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Currency text code according ISO 4217",
+                    "type": "string",
+                    "example": "USD"
+                },
+                "num_code": {
+                    "description": "Currency numeric code according to ISO 4217 (without leading zeros",
+                    "type": "integer",
+                    "example": 840
+                },
+                "rate": {
+                    "description": "Currency exchange rate",
+                    "type": "string",
+                    "example": "28.4821000000"
+                }
+            }
+        },
+        "cbr.ExchangeRates": {
+            "description": "Array of exchange rates for given currencies at given date",
+            "type": "object",
+            "properties": {
+                "date": {
+                    "description": "Date of exchange rates",
+                    "type": "string",
+                    "example": "2006-01-11"
+                },
+                "rates": {
+                    "description": "Array of exchange rates",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cbr.ExchangeRate"
+                    }
+                }
+            }
+        },
+        "currency.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "externalDocs": {
+        "description": "OpenAPI",
+        "url": "https://swagger.io/resources/open-api/"
+    }
+}
