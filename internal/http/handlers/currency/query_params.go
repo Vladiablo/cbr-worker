@@ -3,7 +3,6 @@ package currency
 import (
 	"fmt"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 )
@@ -48,15 +47,22 @@ func (p *QueryParams) Parse(query url.Values) error {
 	}
 
 	var currencies []string
+	uniqCurrencies := make(map[string]struct{}, 2)
 	rawCurrencies := query.Get("currency")
 	if len(rawCurrencies) > 0 {
-		currencies = strings.Split(
-			rawCurrencies,
-			",",
-		)
-		currencies = slices.DeleteFunc(currencies, func(s string) bool {
-			return len(s) == 0
-		})
+		for curr := range strings.SplitSeq(rawCurrencies, ",") {
+			curr := strings.TrimSpace(curr)
+			if len(curr) == 0 {
+				continue
+			}
+
+			if _, ok := uniqCurrencies[curr]; ok {
+				continue
+			}
+
+			uniqCurrencies[curr] = struct{}{}
+			currencies = append(currencies, curr)
+		}
 	}
 
 	p.fromDate = fromDate

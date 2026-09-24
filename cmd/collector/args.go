@@ -17,6 +17,12 @@ type CollectorArgs struct {
 	Timeout time.Duration `arg:"--timeout,env:TIMEOUT"`
 
 	Concurrency int `arg:"--concurrency,env:CONCURRENCY"`
+
+	MaxRetries               int           `arg:"--max-retries,env:MAX_RETRIES"`
+	RetryInitialInterval     time.Duration `arg:"--retry-initial-interval,env:RETRY_INITIAL_INTERVAL"`
+	RetryMaxInterval         time.Duration `arg:"--retry-max-interval,env:RETRY_MAX_INTERVAL"`
+	RetryRandomizationFactor float64       `arg:"--retry-randomization-factor,env:RETRY_RANDOMIZATION_FACTOR"`
+	RetryMultiplier          float64       `arg:"--retry-multiplier,env:RETRY_MULTIPLIER"`
 }
 type DateFlag struct {
 	time.Time
@@ -35,7 +41,7 @@ func (d *DateFlag) UnmarshalText(text []byte) error {
 	return nil
 }
 
-func (d DateFlag) MarshalText() ([]byte, error) {
+func (d *DateFlag) MarshalText() ([]byte, error) {
 	res := d.Format(time.DateOnly)
 
 	return []byte(res), nil

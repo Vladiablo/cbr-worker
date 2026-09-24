@@ -2,6 +2,7 @@ package collector
 
 import (
 	"cbr-worker/internal/cbr"
+	"cbr-worker/internal/cbr/client"
 	"cbr-worker/internal/cbr/repository"
 	"context"
 	"fmt"
@@ -15,7 +16,7 @@ import (
 )
 
 type Collector struct {
-	cbrClient *cbr.Client
+	cbrClient *client.Client
 	repo      *repository.PgRepository
 	cfg       *Config
 
@@ -23,7 +24,7 @@ type Collector struct {
 }
 
 func New(
-	cbrClient *cbr.Client,
+	cbrClient *client.Client,
 	repo *repository.PgRepository,
 	cfg *Config,
 	logger *slog.Logger,

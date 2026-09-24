@@ -1,4 +1,4 @@
-package cbr
+package client
 
 import (
 	"context"
@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"resty.dev/v3"
 )
 
 type myRoundTripper struct {
@@ -334,10 +332,12 @@ func TestClient_GetRates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Client{
-				httpClient: resty.NewWithClient(&http.Client{Transport: tt.transport}),
-				logger:     logger,
+			c, err := New(&http.Client{Transport: tt.transport}, DefaultConfig(), logger)
+			if err != nil {
+				t.Errorf("New() error = %v", err)
+				return
 			}
+
 			got, err := c.GetRates(tt.args.ctx, time.Time{})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetRates() error = %v, wantErr %v", err, tt.wantErr)
@@ -362,40 +362,52 @@ func TestClient_GetRatesContext(t *testing.T) {
 	}
 
 	t.Run("context timeout", func(t *testing.T) {
-		c := &Client{
-			httpClient: resty.NewWithClient(&http.Client{Transport: roundTripperWithCtx}),
-			logger:     logger,
+		c, err := New(&http.Client{Transport: roundTripperWithCtx}, DefaultConfig(), logger)
+		if err != nil {
+			t.Errorf("New() error = %v", err)
+			return
 		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 0)
 		defer cancel()
 
-		_, err := c.GetRates(ctx, time.Time{})
+		_, err = c.GetRates(ctx, time.Time{})
 		if err == nil {
 			t.Errorf("GetRates() error = %v, wantErr %v", err, true)
 		}
 	})
 
 	t.Run("context canceled", func(t *testing.T) {
-		c := &Client{
-			httpClient: resty.NewWithClient(&http.Client{Transport: roundTripperWithCtx}),
-			logger:     logger,
+		c, err := New(&http.Client{Transport: roundTripperWithCtx}, DefaultConfig(), logger)
+		if err != nil {
+			t.Errorf("New() error = %v", err)
+			return
 		}
+
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err := c.GetRates(ctx, time.Time{})
+		_, err = c.GetRates(ctx, time.Time{})
 		if err == nil {
 			t.Errorf("GetRates() error = %v, wantErr %v", err, true)
 		}
 	})
 
 	t.Run("http client timeout", func(t *testing.T) {
-		c := &Client{
-			httpClient: resty.NewWithClient(&http.Client{Transport: roundTripperWithCtx, Timeout: time.Microsecond}),
-			logger:     logger,
+		c, err := New(
+			&http.Client{
+				Transport: roundTripperWithCtx,
+				Timeout:   time.Microsecond,
+			},
+			DefaultConfig(),
+			logger,
+		)
+		if err != nil {
+			t.Errorf("New() error = %v", err)
+			return
 		}
 
-		_, err := c.GetRates(context.Background(), time.Time{})
+		_, err = c.GetRates(context.Background(), time.Time{})
 		if err == nil {
 			t.Errorf("GetRates() error = %v, wantErr %v", err, true)
 		}

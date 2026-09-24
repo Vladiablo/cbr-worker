@@ -17,12 +17,6 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-// TODO: Add in-memory cache
-// Just load all rates at init
-// Refresh every 5 minutes
-// Immutable snapshots and atomic pointers
-// Add cached repo, repo interface
-
 func New(svc *service.Service, logger *slog.Logger) *Handler {
 	return &Handler{svc: svc, logger: logger}
 }
@@ -38,7 +32,7 @@ func (h *Handler) writeErr(w http.ResponseWriter, err error, statusCode int) {
 func (h *Handler) GetRates(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	qp := &QueryParams{}
+	var qp QueryParams
 	if err := qp.Parse(r.URL.Query()); err != nil {
 		h.writeErr(w, err, http.StatusBadRequest)
 
