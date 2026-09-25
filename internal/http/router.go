@@ -4,17 +4,12 @@ import (
 	"cbr-worker/internal/cbr/service"
 	"cbr-worker/internal/http/handlers/currency"
 	"log/slog"
-	"net/http"
+
+	"github.com/labstack/echo/v5"
 )
 
-func getRoutes(svc *service.Service, logger *slog.Logger) *http.ServeMux {
-	currencyHandler := currency.New(
-		svc,
-		logger.With(slog.String("component", "http")),
-	)
+func registerRoutes(e *echo.Echo, svc *service.Service, logger *slog.Logger) {
+	currencyHandler := currency.New(svc, logger)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/rates", currencyHandler.GetRates)
-
-	return mux
+	e.GET("/v1/rates", currencyHandler.GetRates)
 }
