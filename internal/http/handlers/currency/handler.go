@@ -2,31 +2,20 @@ package currency
 
 import (
 	"cbr-worker/internal/cbr/service"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
+
+	"github.com/labstack/echo/v5"
 )
 
 type Handler struct {
 	svc    *service.Service
 	logger *slog.Logger
 }
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
 
 func New(svc *service.Service, logger *slog.Logger) *Handler {
 	return &Handler{svc: svc, logger: logger}
-}
-
-func (h *Handler) writeErr(w http.ResponseWriter, err error, statusCode int) {
-	w.WriteHeader(statusCode)
-	err = json.NewEncoder(w).Encode(ErrorResponse{err.Error()})
-	if err != nil {
-		h.logger.Error("Failed to encode error response", slog.Any("error", err))
-	}
 }
 
 // GetRates
@@ -35,50 +24,40 @@ func (h *Handler) writeErr(w http.ResponseWriter, err error, statusCode int) {
 //	@Description	Get list of CBR exchange rates
 //	@Tags			rates
 //	@Produce		json
-//	@Param			currency	query		[]string	false	"List of currencies to get exchange rates for. By default, get exchange rates for all available currencies"		CollectionFormat(csv)	Example(AUD,USD)
-//	@Param			fromDate	query		string		false	"ISO 8601 formatted date specifying the start date of exchange rates list. Must be used together with `toDate`"	Format(date)			Example(2006-01-02)
-//	@Param			toDate		query		string		false	"ISO 8601 formatted date specifying the end date of exchange rates list. Must be used together with `fromDate`"	Format(date)			Example(2006-01-31)
+//	@Param			currency	query		[]string	false	"List of Currencies to get exchange rates for. By default, get exchange rates for all available Currencies"		CollectionFormat(csv)	Example(AUD,USD)
+//	@Param			FromDate	query		string		false	"ISO 8601 formatted date specifying the start date of exchange rates list. Must be used together with `ToDate`"	Format(date)			Example(2006-01-02)
+//	@Param			ToDate		query		string		false	"ISO 8601 formatted date specifying the end date of exchange rates list. Must be used together with `FromDate`"	Format(date)			Example(2006-01-31)
 //	@Success		200			{array}		cbr.ExchangeRates
-//	@Failure		400			{object}	ErrorResponse
-//	@Failure		404			{object}	ErrorResponse
-//	@Failure		500			{object}	ErrorResponse
+//	@Failure		400			{object}	http.ErrorResponse
+//	@Failure		404			{object}	http.ErrorResponse
+//	@Failure		500			{object}	http.ErrorResponse
 //	@Router			/rates [get]
-func (h *Handler) GetRates(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	var qp QueryParams
-	if err := qp.Parse(r.URL.Query()); err != nil {
-		h.writeErr(w, err, http.StatusBadRequest)
-
-		return
+func (h *Handler) GetRates(c *echo.Context) error {
+	var req GetRatesRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.ErrBadRequest.Wrap(err)
 	}
 
 	params := &service.GetRatesParams{
-		Currencies: qp.currencies,
-		FromDate:   qp.fromDate,
-		ToDate:     qp.toDate,
+		Currencies: req.GetUniqCurrencies(),
+		FromDate:   req.FromDate.Time,
+		ToDate:     req.ToDate.Time,
 	}
 
-	rates, err := h.svc.GetRates(r.Context(), params)
+	rates, err := h.svc.GetRates(c.Request().Context(), params)
 	if err != nil {
 		if err, ok := errors.AsType[service.GetRatesParamsError](err); ok {
-			h.writeErr(w, err, http.StatusBadRequest)
-		} else {
-			h.logger.Error("Failed to get exchange rates", slog.Any("error", err))
-			h.writeErr(w, err, http.StatusInternalServerError)
+			return echo.ErrBadRequest.Wrap(err)
 		}
 
-		return
+		h.logger.Error("Failed to get exchange rates", slog.Any("error", err))
+
+		return echo.ErrInternalServerError.Wrap(err)
 	}
 
 	if len(rates) == 0 {
-		h.writeErr(w, fmt.Errorf("no exchange rates found"), http.StatusNotFound)
-
-		return
+		return echo.NewHTTPError(http.StatusNotFound, "no exchange rates found")
 	}
 
-	err = json.NewEncoder(w).Encode(rates)
-	if err != nil {
-		h.writeErr(w, err, http.StatusInternalServerError)
-	}
+	return c.JSON(http.StatusOK, rates)
 }

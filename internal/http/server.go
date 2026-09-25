@@ -1,7 +1,6 @@
 package http
 
 import (
-	"cbr-worker/internal/cbr/service"
 	"context"
 	"errors"
 	"fmt"
@@ -9,31 +8,37 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 )
 
 type Server struct {
-	srv *http.Server
+	echo *echo.Echo
+	addr string
 
 	logger *slog.Logger
 }
 
-func NewServer(addr string, svc *service.Service, logger *slog.Logger) *Server {
-	srv := &http.Server{
-		Addr:         addr,
-		Handler:      getRoutes(svc, logger),
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	}
+func NewServer(addr string, logger *slog.Logger) *Server {
+	e := echo.NewWithConfig(echo.Config{
+		Logger:           logger,
+		HTTPErrorHandler: httpErrorHandler,
+	})
+
+	e.Use(middleware.Recover())
+	e.Use(middleware.ContextTimeout(30 * time.Second))
 
 	return &Server{
-		srv: srv,
+		echo: e,
+		addr: addr,
 
 		logger: logger,
 	}
 }
 
-func (s *Server) Start(ctx context.Context) error {
-	s.logger.Info("Starting HTTP server...", slog.String("addr", s.srv.Addr))
+func (s *Server) Start(ctx context.Context, gracefulTimeout time.Duration) error {
+	s.logger.Info("Starting HTTP server...", slog.String("addr", s.addr))
 
 	// Note: lc.Listen doesn't respect cancelled context, so we do our own check
 	if ctx.Err() != nil {
@@ -41,20 +46,25 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	var lc net.ListenConfig
-	listener, err := lc.Listen(ctx, "tcp", s.srv.Addr)
+	listener, err := lc.Listen(ctx, "tcp", s.addr)
 	if err != nil {
 		return fmt.Errorf("http server failed to listen: %w", err)
 	}
 
-	s.logger.Info("HTTP server started", slog.String("addr", s.srv.Addr))
-
 	go func() {
 		<-ctx.Done()
 
-		_ = s.shutdown(context.Background())
+		s.logger.Info("Shutting down HTTP server...")
 	}()
 
-	if err := s.srv.Serve(listener); err != nil {
+	sc := echo.StartConfig{
+		Address:         s.addr,
+		HideBanner:      true,
+		Listener:        listener,
+		GracefulTimeout: gracefulTimeout,
+	}
+
+	if err := sc.Start(ctx, s.echo); err != nil {
 		if errors.Is(err, http.ErrServerClosed) {
 			s.logger.Info("HTTP server stopped")
 
@@ -67,10 +77,4 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (s *Server) shutdown(ctx context.Context) error {
-	s.logger.Info("Shutting down HTTP server...")
-
-	return s.srv.Shutdown(ctx)
 }
