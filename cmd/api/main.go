@@ -32,6 +32,8 @@ const (
 )
 
 func run() int {
+	const shutdownTimeout = 10 * time.Second
+
 	_ = godotenv.Load()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
@@ -90,7 +92,7 @@ func run() int {
 		defer wg.Done()
 		defer cancel()
 
-		if err := srv.Start(ctx); err != nil {
+		if err := srv.Start(ctx, shutdownTimeout); err != nil {
 			firstErr.CompareAndSwap(nil, &err)
 
 			logger.Error("Failed to serve HTTP", slog.Any("error", err))
@@ -111,7 +113,6 @@ func run() int {
 	signal.Notify(sigCh, os.Interrupt)
 
 	var timeoutCh <-chan time.Time
-	const shutdownTimeout = 10 * time.Second
 
 	ctxDoneCh := ctx.Done()
 

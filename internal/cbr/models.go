@@ -10,6 +10,17 @@ func (d *Date) MarshalJSON() ([]byte, error) {
 	return []byte(d.Format("\"2006-01-02\"")), nil
 }
 
+func (d *Date) UnmarshalParam(src string) error {
+	result, err := time.Parse(time.DateOnly, src)
+	if err != nil {
+		return err
+	}
+
+	*d = Date{Time: result}
+
+	return nil
+}
+
 // ExchangeRate model info
 //
 //	@Description	Exchange rate for given currency

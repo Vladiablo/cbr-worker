@@ -1,56 +1,32 @@
 package currency
 
 import (
+	"cbr-worker/internal/cbr"
 	"fmt"
-	"net/url"
 	"strings"
-	"time"
+
+	"github.com/labstack/echo/v5"
 )
 
 type QueryParams struct {
-	currencies []string
-	fromDate   time.Time
-	toDate     time.Time
+	Currencies []string `query:"currency"`
+	FromDate   cbr.Date `query:"fromDate"`
+	ToDate     cbr.Date `query:"toDate"`
 }
 
-func parseDate(query url.Values, name string) (time.Time, error) {
-	strDate := query.Get(name)
-	if strDate != "" {
-		result, err := time.Parse(time.DateOnly, strDate)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("%s has invalid format: %w", name, err)
-		}
-
-		return result, nil
-	}
-
-	return time.Time{}, nil
-}
-
-func (p *QueryParams) Parse(query url.Values) error {
+func (p *QueryParams) Parse(c *echo.Context) error {
 	if p == nil {
 		return fmt.Errorf("QueryParams must not be nil")
 	}
 
-	if len(query) == 0 {
-		return nil
-	}
-
-	fromDate, err := parseDate(query, "fromDate")
-	if err != nil {
-		return err
-	}
-
-	toDate, err := parseDate(query, "toDate")
-	if err != nil {
+	if err := c.Bind(p); err != nil {
 		return err
 	}
 
 	var currencies []string
 	uniqCurrencies := make(map[string]struct{}, 2)
-	rawCurrencies := query.Get("currency")
-	if len(rawCurrencies) > 0 {
-		for curr := range strings.SplitSeq(rawCurrencies, ",") {
+	if len(p.Currencies) > 0 {
+		for curr := range strings.SplitSeq(p.Currencies[0], ",") {
 			curr := strings.TrimSpace(curr)
 			if len(curr) == 0 {
 				continue
@@ -65,9 +41,7 @@ func (p *QueryParams) Parse(query url.Values) error {
 		}
 	}
 
-	p.fromDate = fromDate
-	p.toDate = toDate
-	p.currencies = currencies
+	p.Currencies = currencies
 
 	return nil
 }
