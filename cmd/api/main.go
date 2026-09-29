@@ -86,11 +86,7 @@ func run() int {
 
 	handlersLogger := logger.With(slog.String("component", "http"))
 	currencyHandler := currency.New(svc, handlersLogger)
-
-	handlers := &http.Handlers{
-		GetRates: currencyHandler.GetRates,
-	}
-	http.RegisterRoutes(srv, handlers)
+	http.RegisterRoutes(srv, currencyHandler)
 
 	var wg sync.WaitGroup
 	wg.Add(1)

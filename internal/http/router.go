@@ -1,13 +1,11 @@
 package http
 
 import (
-	"github.com/labstack/echo/v5"
+	"cbr-worker/internal/http/handlers/currency"
 )
 
-type Handlers struct {
-	GetRates echo.HandlerFunc
-}
+func RegisterRoutes(srv *Server, currencyHandler *currency.Handler) {
+	v1 := srv.echo.Group("/v1")
 
-func RegisterRoutes(srv *Server, handlers *Handlers) {
-	srv.echo.GET("/v1/rates", handlers.GetRates)
+	currency.RegisterRoutes(v1, currencyHandler)
 }
