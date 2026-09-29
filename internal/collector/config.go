@@ -14,11 +14,11 @@ type Config struct {
 
 func (c *Config) Validate() error {
 	if !c.ToDate.IsZero() && c.FromDate.IsZero() {
-		return fmt.Errorf("ToDate can only be used with FromDate")
+		return fmt.Errorf("toDate can only be used with fromDate")
 	}
 
 	if c.ToDate.Before(c.FromDate) {
-		return fmt.Errorf("ToDate cannot be before FromDate")
+		return fmt.Errorf("toDate cannot be before fromDate")
 	}
 
 	if c.Timeout < 0 {

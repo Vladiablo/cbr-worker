@@ -4,6 +4,7 @@ import (
 	"cbr-worker/internal/cbr/repository"
 	"cbr-worker/internal/cbr/service"
 	"cbr-worker/internal/http"
+	"cbr-worker/internal/http/handlers/currency"
 	"context"
 	"log/slog"
 	"os"
@@ -32,6 +33,8 @@ const (
 )
 
 func run() int {
+	const shutdownTimeout = 10 * time.Second
+
 	_ = godotenv.Load()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
@@ -77,9 +80,17 @@ func run() int {
 
 	svc := service.New(cachedRepo)
 
-	srv := http.NewServer(httpServerAddr, svc,
+	srv := http.NewServer(httpServerAddr,
 		logger.With(slog.String("component", "http-server")),
 	)
+
+	handlersLogger := logger.With(slog.String("component", "http"))
+	currencyHandler := currency.New(svc, handlersLogger)
+
+	handlers := &http.Handlers{
+		GetRates: currencyHandler.GetRates,
+	}
+	http.RegisterRoutes(srv, handlers)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -90,7 +101,7 @@ func run() int {
 		defer wg.Done()
 		defer cancel()
 
-		if err := srv.Start(ctx); err != nil {
+		if err := srv.Start(ctx, shutdownTimeout); err != nil {
 			firstErr.CompareAndSwap(nil, &err)
 
 			logger.Error("Failed to serve HTTP", slog.Any("error", err))
@@ -111,7 +122,6 @@ func run() int {
 	signal.Notify(sigCh, os.Interrupt)
 
 	var timeoutCh <-chan time.Time
-	const shutdownTimeout = 10 * time.Second
 
 	ctxDoneCh := ctx.Done()
 
